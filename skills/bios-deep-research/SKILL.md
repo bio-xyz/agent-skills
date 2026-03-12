@@ -146,9 +146,7 @@ The `amount` is in USDC's smallest unit (6 decimals). `200000` = $0.20.
 
 ### Important note on `extensions.bazaar`
 
-If the response includes `extensions.bazaar.info.input.body`, treat it as informational metadata only. It may contain an example request body rather than the actual user query. Use the actual HTTP request body you are resubmitting as the source of truth.
-
-Reason: during testing, the request body sent was about NAD+, but `extensions.bazaar.info.input.body.message` returned an unrelated example query about quantum computing.
+If the response includes `extensions.bazaar.info.input.body`, treat it as informational metadata only. It may contain an example request body rather than the actual user query.
 
 ### Step 2: Create an x402 v2 payment payload
 
@@ -379,6 +377,62 @@ const txHash = await walletClient.writeContract({
 
 console.log(`Feedback tx: ${txHash}`);
 ```
+
+## Known working flow
+
+Use this flow when `awal` is unavailable or when you need the most reliable manual path.
+
+1. Send:
+
+```http
+POST /api/deep-research/start
+Content-Type: application/json
+```
+
+with body:
+
+```json
+{
+  "message": "Your research query here",
+  "researchMode": "steering"
+}
+```
+
+2. Expect `402 Payment Required`.
+3. Parse the JSON response body as the x402 v2 payment requirements.
+4. Create an x402 v2 payment payload with an EVM signer using `@x402/core` and `@x402/evm`.
+5. Retry the same request with:
+
+```
+Content-Type: application/json
+PAYMENT-SIGNATURE: <base64-encoded x402 v2 payment payload>
+```
+
+6. Keep the paid retry body as the real user query:
+
+```json
+{
+  "message": "Your research query here",
+  "researchMode": "steering"
+}
+```
+
+7. Expect:
+
+```json
+{
+  "conversationId": "...",
+  "status": "queued"
+}
+```
+
+8. Poll:
+
+```
+GET /api/deep-research/{conversationId}
+```
+
+until status becomes `completed` or `timeout`.
 
 ## Minimal curl example (manual signing)
 
