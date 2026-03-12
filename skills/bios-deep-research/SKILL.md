@@ -1,6 +1,6 @@
 ---
 name: bios-deep-research
-description: Run paid deep research queries on BIOS via the x402 payment protocol. Uses USDC on Base for micro-payments.
+description: Run paid deep research queries on BIOS via x402 v2 on Base. Use when submitting BIOS research jobs, handling 402 payment negotiation from the JSON response body, retrying with PAYMENT-SIGNATURE, polling conversation status, or submitting ERC-8004 feedback.
 ---
 
 # BIOS Deep Research (x402)
@@ -53,6 +53,8 @@ Any wallet that can produce EIP-712 signatures works. Common setups:
 | **MPC / multisig** | Any signer that produces a valid EIP-712 signature | Custom custody setups |
 
 ## Quickstart: Coinbase Agentic Wallet (optional convenience path)
+
+If `awal` is unavailable, skip to the manual x402 v2 flow below.
 
 If `awal` is available in your environment, it can handle x402 payment negotiation (steps 1-3 below) in a single command. However, `awal` is **not required**. If it is unavailable or does not work, fall back to the manual protocol below using a direct signer (CDP SDK, private key, or any EIP-712-capable signer with `@x402/core` / `@x402/evm`).
 
