@@ -13,6 +13,18 @@ BIOS provides an AI-powered research service behind a paywall using the [x402 pr
 
 No tokens leave your wallet until the server successfully delivers results. The payment is an EIP-712 signature (an authorization), and settlement happens server-side via a facilitator only after delivery.
 
+## Protocol compatibility
+
+This skill uses **x402 v2**, not x402 v1.
+
+Important:
+- Treat the BIOS response body as the source of truth for payment requirements
+- Use the paid retry header `PAYMENT-SIGNATURE`
+- Do **not** default to v1-style `X-PAYMENT`
+- Do **not** assume generic `@x402/fetch` flows work unchanged. BIOS currently returns x402 requirements in the JSON response body rather than a `PAYMENT-REQUIRED` response header
+- `awal` is optional. If `awal` is unavailable, use a direct signer path such as CDP SDK + `@x402/core` / `@x402/evm`
+- Do **not** trust `extensions.bazaar.info.input.body` as the canonical user query. It may contain example metadata rather than the actual submitted request body
+
 ## Pricing
 
 | Mode | Cost (USDC) | Typical wait |
@@ -40,9 +52,9 @@ Any wallet that can produce EIP-712 signatures works. Common setups:
 | **Browser wallet** | MetaMask, Rabby, etc. via `eth_signTypedData_v4` | Interactive/manual use |
 | **MPC / multisig** | Any signer that produces a valid EIP-712 signature | Custom custody setups |
 
-## Quickstart: Coinbase Agentic Wallet (recommended for agents)
+## Quickstart: Coinbase Agentic Wallet (optional convenience path)
 
-The fastest path for an AI agent. The [`awal` CLI](https://docs.cdp.coinbase.com/agentic-wallet/welcome) handles x402 payment negotiation (steps 1-3 below) in a single command - no manual EIP-712 signing required.
+If `awal` is available in your environment, it can handle x402 payment negotiation (steps 1-3 below) in a single command. However, `awal` is **not required**. If it is unavailable or does not work, fall back to the manual protocol below using a direct signer (CDP SDK, private key, or any EIP-712-capable signer with `@x402/core` / `@x402/evm`).
 
 **One-time setup:**
 
@@ -101,11 +113,16 @@ Optional field: `"conversationId": "..."` to continue a previous conversation.
 
 **Response:** `402 Payment Required`
 
-The payment requirements are in the response body and/or the `x-payment-required` header (base64-encoded JSON). Example body:
+The payment requirements are returned in the **JSON response body**. Example body:
 
 ```json
 {
-  "x402Version": 1,
+  "x402Version": 2,
+  "resource": {
+    "url": "https://x402.chat.bio.xyz/api/deep-research",
+    "description": "BioAgent deep research job",
+    "mimeType": "application/json"
+  },
   "accepts": [
     {
       "scheme": "exact",
@@ -113,39 +130,53 @@ The payment requirements are in the response body and/or the `x-payment-required
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "amount": "200000",
       "payTo": "0x4b4F85C16B488181F863a5e5a392A474B86157e0",
-      "maxTimeoutSeconds": 1800
+      "maxTimeoutSeconds": 1800,
+      "extra": {
+        "name": "USD Coin",
+        "version": "2"
+      }
     }
-  ],
-  "resource": {
-    "url": "/api/deep-research/start",
-    "description": "BIOS Deep Research",
-    "mimeType": "application/json"
-  }
+  ]
 }
 ```
 
 The `amount` is in USDC's smallest unit (6 decimals). `200000` = $0.20.
 
-### Step 2: Sign EIP-712 payment authorization
+### Important note on `extensions.bazaar`
 
-Using the data from step 1, construct and sign an EIP-712 typed data payload. The x402 "exact" scheme uses this structure:
+If the response includes `extensions.bazaar.info.input.body`, treat it as informational metadata only. It may contain an example request body rather than the actual user query. Use the actual HTTP request body you are resubmitting as the source of truth.
 
-**Domain:**
+Reason: during testing, the request body sent was about NAD+, but `extensions.bazaar.info.input.body.message` returned an unrelated example query about quantum computing.
 
-```json
-{
-  "name": "x402",
-  "version": "1",
-  "chainId": 8453,
-  "verifyingContract": "<USDC contract: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913>"
-}
+### Step 2: Create an x402 v2 payment payload
+
+Using the data from step 1, create an x402 v2 payment payload from the response body. For BIOS, the most reliable path is to use an x402 v2 EVM client directly rather than a v1 helper.
+
+**Recommended TypeScript/Node path:**
+
+```typescript
+import { x402Client, x402HTTPClient } from "@x402/core/client";
+import { ExactEvmScheme } from "@x402/evm";
+
+const client = new x402Client().register("eip155:*", new ExactEvmScheme(signer));
+const httpClient = new x402HTTPClient(client);
+
+const paymentRequired = await firstResponse.json();
+const paymentPayload = await client.createPaymentPayload(paymentRequired);
+const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
 ```
 
-**Types & message:** Follow the [x402 exact scheme spec](https://x402.org/docs). The `x402` client libraries handle this automatically if you use them.
+The signer must support EIP-712 signing for Base USDC. A direct CDP SDK signer works.
 
-**Using x402 client libraries (recommended):**
+Do **not** assume this works unchanged:
 
-Python:
+```typescript
+import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
+```
+
+That helper expects header-based v2 payment negotiation. BIOS currently returns the payment requirements in the response body, so manual body parsing is safer.
+
+**Python path:**
 
 ```python
 from x402 import parse_payment_required, x402Client
@@ -158,25 +189,28 @@ payment_required = parse_payment_required(response_data)
 payment_payload = await client.create_payment_payload(payment_required)
 ```
 
-TypeScript/Node:
-
-```typescript
-import { createPaymentHeader } from "@x402/fetch";
-// See https://github.com/coinbase/x402 for full examples
-```
-
 Your signer just needs to implement: `sign_typed_data(domain, types, primary_type, message) → signature_bytes`
 
-### Step 3: Resubmit with payment header
+### Step 3: Resubmit with the v2 payment header
 
 ```
 POST /api/deep-research/start
 Content-Type: application/json
-X-PAYMENT: <base64-encoded payment payload>
-PAYMENT-SIGNATURE: <base64-encoded payment payload>
+PAYMENT-SIGNATURE: <base64-encoded x402 v2 payment payload>
 ```
 
-Send both `X-PAYMENT` and `PAYMENT-SIGNATURE` headers for compatibility (server may check either).
+Use `PAYMENT-SIGNATURE` as the paid retry header.
+
+The actual research request body on the paid retry should remain your real query, for example:
+
+```json
+{
+  "message": "Your research query here",
+  "researchMode": "steering"
+}
+```
+
+Do **not** replace your request body with any example body found in `extensions.bazaar.info.input.body`.
 
 Encode the payment payload:
 
@@ -347,19 +381,18 @@ console.log(`Feedback tx: ${txHash}`);
 ## Minimal curl example (manual signing)
 
 ```bash
-# 1. Get payment requirements
+# 1. Get payment requirements (x402 v2 in response body)
 curl -s -X POST https://x402.chat.bio.xyz/api/deep-research/start \
   -H "Content-Type: application/json" \
   -d '{"message":"What is NAD+?","researchMode":"steering"}'
-# → 402 with payment requirements in body/headers
+# → 402 with x402Version:2 payment requirements in JSON body
 
 # 2. Sign the payment (language-specific, see above)
 
-# 3. Submit with payment
+# 3. Submit with PAYMENT-SIGNATURE header
 curl -s -X POST https://x402.chat.bio.xyz/api/deep-research/start \
   -H "Content-Type: application/json" \
-  -H "X-PAYMENT: <base64-payment>" \
-  -H "PAYMENT-SIGNATURE: <base64-payment>" \
+  -H "PAYMENT-SIGNATURE: <base64-encoded x402 v2 payment payload>" \
   -d '{"message":"What is NAD+?","researchMode":"steering"}'
 # → 200 with conversationId
 
