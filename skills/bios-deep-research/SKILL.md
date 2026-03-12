@@ -157,7 +157,7 @@ If the response includes `extensions.bazaar.info.input.body`, treat it as inform
 
 Using the data from step 1, create an x402 v2 payment payload. Use an x402 v2 EVM client directly rather than a v1 helper.
 
-**Recommended TypeScript/Node path:**
+**TypeScript/Node:**
 
 ```typescript
 import { x402Client } from "@x402/core/client";
@@ -178,7 +178,7 @@ const paymentSignature = encodePaymentSignatureHeader(paymentPayload);
 
 The signer must support EIP-712 signing for Base USDC. A direct CDP SDK signer or a viem `privateKeyToAccount` both work.
 
-**Python path:**
+**Python:**
 
 ```python
 from x402 import parse_payment_required, x402Client
@@ -287,169 +287,14 @@ Response:
 
 #### 5b. Call `giveFeedback()` on the Reputation Registry
 
-**Contract addresses:**
+Contract address (Base): `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` · BIOS agentId: `19177`
 
-| Network | ReputationRegistry |
-|---------|--------------------|
-| Base (8453) | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
-| Base Sepolia (84532) | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
+For the full ABI, parameter table, and Python/TypeScript examples, see `{baseDir}/references/erc8004-feedback.md`.
 
-**BIOS agentId:** `19177`
+## Examples, reference implementation & dependencies
 
-**ABI (giveFeedback only):**
-
-```json
-[
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "agentId", "type": "uint256" },
-      { "internalType": "int128", "name": "value", "type": "int128" },
-      { "internalType": "uint8", "name": "valueDecimals", "type": "uint8" },
-      { "internalType": "string", "name": "tag1", "type": "string" },
-      { "internalType": "string", "name": "tag2", "type": "string" },
-      { "internalType": "string", "name": "endpoint", "type": "string" },
-      { "internalType": "string", "name": "feedbackURI", "type": "string" },
-      { "internalType": "bytes32", "name": "feedbackHash", "type": "bytes32" }
-    ],
-    "name": "giveFeedback",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  }
-]
-```
-
-**Parameters:**
-
-| Parameter | Value |
-|-----------|-------|
-| `agentId` | `19177` |
-| `value` | `1` (success) |
-| `valueDecimals` | `0` |
-| `tag1` | `"x402"` |
-| `tag2` | The research mode used (e.g. `"steering"`) |
-| `endpoint` | `"https://x402.ai.bio.xyz/api/deep-research/start"` |
-| `feedbackURI` | `"{baseDir}/api/feedback/{conversationId}"` |
-| `feedbackHash` | The `feedbackHash` from step 5a |
-
-**Python example (web3.py):**
-
-```python
-from web3 import Web3
-
-REPUTATION_REGISTRY = "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63"
-BIOS_AGENT_ID = 19177
-ABI = [{"inputs":[{"internalType":"uint256","name":"agentId","type":"uint256"},{"internalType":"int128","name":"value","type":"int128"},{"internalType":"uint8","name":"valueDecimals","type":"uint8"},{"internalType":"string","name":"tag1","type":"string"},{"internalType":"string","name":"tag2","type":"string"},{"internalType":"string","name":"endpoint","type":"string"},{"internalType":"string","name":"feedbackURI","type":"string"},{"internalType":"bytes32","name":"feedbackHash","type":"bytes32"}],"name":"giveFeedback","outputs":[],"stateMutability":"nonpayable","type":"function"}]
-
-w3 = Web3(Web3.HTTPProvider("https://mainnet.base.org"))
-contract = w3.eth.contract(address=REPUTATION_REGISTRY, abi=ABI)
-
-tx = contract.functions.giveFeedback(
-    BIOS_AGENT_ID,
-    1,                              # value: success
-    0,                              # valueDecimals
-    "x402",                         # tag1
-    research_mode,                  # tag2: "steering", "smart", etc.
-    "https://x402.ai.bio.xyz/api/deep-research/start",
-    f"{api_base}/api/feedback/{conversation_id}",
-    bytes.fromhex(feedback_hash[2:]),  # feedbackHash from step 5a (strip 0x prefix)
-).build_transaction({
-    "from": account.address,
-    "nonce": w3.eth.get_transaction_count(account.address),
-})
-
-signed = account.sign_transaction(tx)
-tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-print(f"Feedback tx: {tx_hash.hex()}")
-```
-
-**TypeScript example (viem):**
-
-```typescript
-import { createWalletClient, http, parseAbi } from "viem";
-import { base } from "viem/chains";
-import { privateKeyToAccount } from "viem/accounts";
-
-const REPUTATION_REGISTRY = "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63";
-const BIOS_AGENT_ID = 19177n;
-
-const account = privateKeyToAccount(privateKey);
-const walletClient = createWalletClient({ account, chain: base, transport: http() });
-
-const txHash = await walletClient.writeContract({
-  address: REPUTATION_REGISTRY,
-  abi: parseAbi([
-    "function giveFeedback(uint256 agentId, int128 value, uint8 valueDecimals, string tag1, string tag2, string endpoint, string feedbackURI, bytes32 feedbackHash)",
-  ]),
-  functionName: "giveFeedback",
-  args: [
-    BIOS_AGENT_ID,
-    1n,                             // value: success
-    0,                              // valueDecimals
-    "x402",                         // tag1
-    researchMode,                   // tag2
-    "https://x402.ai.bio.xyz/api/deep-research/start",
-    `${apiBase}/api/feedback/${conversationId}`,
-    feedbackHash as `0x${string}`,  // feedbackHash from step 5a
-  ],
-});
-
-console.log(`Feedback tx: ${txHash}`);
-```
-
-## Minimal curl example (manual signing)
-
-```bash
-# 1. Get payment requirements (x402 v2 in response body)
-curl -s -X POST https://x402.ai.bio.xyz/api/deep-research/start \
-  -H "Content-Type: application/json" \
-  -d '{"message":"What is NAD+?","researchMode":"steering"}'
-# → 402 with x402Version:2 payment requirements in JSON body
-
-# 2. Sign the authorization (language-specific, see above)
-
-# 3. Submit with PAYMENT-SIGNATURE header
-curl -s -X POST https://x402.ai.bio.xyz/api/deep-research/start \
-  -H "Content-Type: application/json" \
-  -H "PAYMENT-SIGNATURE: <base64-encoded x402 v2 payment payload>" \
-  -d '{"message":"What is NAD+?","researchMode":"steering"}'
-# → 200 with conversationId
-
-# 4. Poll
-curl -s https://x402.ai.bio.xyz/api/deep-research/{conversationId}
-
-# 5. (Optional) Fetch feedback data for on-chain submission
-curl -s https://x402.ai.bio.xyz/api/feedback/{conversationId}
-```
+For curl examples, the reference Python script (`{baseDir}/scripts/research.py`), and dependency lists, see `{baseDir}/references/examples.md`.
 
 ## Implementation notes
 
 If you've already built a working implementation for your setup, save your script and config under `{baseDir}/my-implementation/` to avoid rebuilding the x402 signing flow each time.
-
-## Reference implementation
-
-A complete Python script is included at `{baseDir}/scripts/research.py`. It supports private key and CDP wallet backends with auto-detection. See the script header for env var configuration.
-
-```bash
-# Private key wallet
-export WALLET_PRIVATE_KEY=0x...
-python3 {baseDir}/scripts/research.py "Your query" --mode steering
-
-# CDP wallet
-export CDP_API_KEY_ID=...
-export CDP_API_KEY_SECRET=...
-export CDP_WALLET_ADDRESS=0x...
-python3 {baseDir}/scripts/research.py "Your query" --mode smart
-
-# Dry run (no payment)
-python3 {baseDir}/scripts/research.py --dry-run "test"
-```
-
-## Dependencies (for reference script)
-
-```bash
-pip install x402 httpx nest_asyncio
-pip install eth-account      # for private key signing
-pip install cdp-sdk           # only if using CDP wallet
-pip install web3              # only if submitting ERC-8004 feedback
-```
