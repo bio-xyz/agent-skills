@@ -1,6 +1,36 @@
 # Examples & Dependencies
 
-## Minimal curl example (manual signing)
+## Minimal curl examples
+
+### API key path
+
+```bash
+# 1. Start research
+curl -sS -X POST https://api.ai.bio.xyz/deep-research/start \
+  -H "Authorization: Bearer $BIOS_API_KEY" \
+  --data-urlencode "message=What is NAD+?" \
+  --data-urlencode "researchMode=steering"
+# → 200 with conversationId
+
+# 2. Poll
+curl -sS "https://api.ai.bio.xyz/deep-research/{conversationId}" \
+  -H "Authorization: Bearer $BIOS_API_KEY"
+
+# 3. Follow-up (steering only)
+curl -sS -X POST https://api.ai.bio.xyz/deep-research/start \
+  -H "Authorization: Bearer $BIOS_API_KEY" \
+  --data-urlencode "message=Your follow-up question" \
+  --data-urlencode "conversationId=CONVERSATION_ID" \
+  --data-urlencode "researchMode=steering"
+
+# 4. List past sessions
+curl -sS "https://api.ai.bio.xyz/deep-research?limit=20" \
+  -H "Authorization: Bearer $BIOS_API_KEY"
+```
+
+Note: the direct BIOS API expects **form data**, not JSON. Always use `--data-urlencode` for user-supplied input.
+
+### x402 path (manual signing)
 
 ```bash
 # 1. Get payment requirements (x402 v2 in response body)
@@ -25,30 +55,28 @@ curl -s https://x402.ai.bio.xyz/api/deep-research/{conversationId}
 curl -s https://x402.ai.bio.xyz/api/feedback/{conversationId}
 ```
 
-## Reference implementation
+## Reference implementation (x402)
 
-A complete Python script is included at `{baseDir}/scripts/research.py`. It supports private key and CDP wallet backends with auto-detection. See the script header for env var configuration.
+A Python script for the x402 path is at `{baseDir}/references/python-script.md`. It delegates EIP-712 signing to a Node helper at `{baseDir}/references/research_signer.md`.
+
+These scripts handle x402 payment negotiation only. For the API key path, a simple `curl` or `httpx`/`requests` call with a Bearer header is all you need (see curl examples above).
+
+Usage:
 
 ```bash
 # Private key wallet
 export WALLET_PRIVATE_KEY=0x...
-python3 {baseDir}/scripts/research.py "Your query" --mode steering
+python3 research.py "Your query" --mode steering
 
 # CDP wallet
 export CDP_API_KEY_ID=...
 export CDP_API_KEY_SECRET=...
 export CDP_WALLET_ADDRESS=0x...
-python3 {baseDir}/scripts/research.py "Your query" --mode smart
+python3 research.py "Your query" --mode smart
 
 # Dry run (no payment)
-python3 {baseDir}/scripts/research.py --dry-run "test"
-```
+python3 research.py --dry-run "test"
 
-## Dependencies (for reference script)
-
-```bash
-pip install x402 httpx nest_asyncio
-pip install eth-account      # for private key signing
-pip install cdp-sdk           # only if using CDP wallet
-pip install web3              # only if submitting ERC-8004 feedback
+# Submit without polling
+python3 research.py --mode steering --no-poll "test"
 ```
