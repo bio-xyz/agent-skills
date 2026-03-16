@@ -1,10 +1,6 @@
 ---
 name: bio-launchpad
 description: Participate in Bio Protocol launches on Base. Handles wallet registration, launch discovery, on-chain participation (approve + commit), claiming allocations, and withdrawals. Use when the user wants to join, contribute to, claim from, or withdraw from a Bio Launchpad launch on Base, or when they mention Bio Protocol token sales, Bio launchpad, or agent launch participation.
-metadata:
-  author: bio-protocol
-  version: "1.0"
-compatibility: Requires network access, Python 3.10+, web3.py, and an EVM wallet with ETH (gas), BIO, or USDC on Base.
 ---
 
 # Bio Launchpad - Agent Participation
@@ -48,6 +44,7 @@ Every Bio agent API request requires three wallet-signed headers:
 The server rejects signatures older than 5 minutes. If authentication fails, re-sign with a fresh timestamp and retry once.
 
 ```python
+import os
 import time
 from eth_account import Account
 from eth_account.messages import encode_defunct
