@@ -6,7 +6,8 @@ Agent skills for [bio.xyz](https://bio.xyz) - installable via [`npx skills`](htt
 
 | Skill | Description |
 |-------|-------------|
-| **bios-deep-research** | Run paid deep research queries on BIOS via the x402 payment protocol. Uses USDC on Base for micro-payments. |
+| **bios-deep-research** | Run deep research queries on BIOS. Supports API key auth and x402 crypto payments with USDC on Base. |
+| **bio-launchpad** | Participate in Bio Protocol launches on Base. Handles launch discovery, on-chain participation, claiming allocations, and withdrawals. |
 
 ## Install
 
