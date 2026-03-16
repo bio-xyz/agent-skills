@@ -44,7 +44,7 @@ Pay per request with USDC on Base. Send a JSON request, receive `402 Payment Req
 This skill uses **x402 v2**, not x402 v1.
 
 Important:
-- The 402 response includes payment requirements in **both** the JSON response body and the `X-PAYMENT-REQUIRED` header (base64-encoded). Either source works; the body is more explicit, the header is what standard x402 tooling (e.g. `@x402/fetch`) expects
+- The 402 response includes payment requirements in **both** the JSON response body and the `PAYMENT-REQUIRED` header (base64-encoded). Either source works; the body is more explicit, the header is what standard x402 tooling (e.g. `@x402/fetch`) expects
 - Use the paid retry header `PAYMENT-SIGNATURE`
 - Do **not** default to v1-style `X-PAYMENT`
 - `awal` is optional. If `awal` is unavailable, use a direct signer path such as CDP SDK + `@x402/core` / `@x402/evm`
@@ -146,7 +146,7 @@ Optional fields:
 
 **Response:** `402 Payment Required`
 
-The payment requirements are returned in both the **JSON response body** and the `X-PAYMENT-REQUIRED` response header. Example body:
+The payment requirements are returned in both the **JSON response body** and the `PAYMENT-REQUIRED` response header. Example body:
 
 ```json
 {
@@ -195,9 +195,9 @@ const client = new x402Client();
 const signer = toClientEvmSigner(account, publicClient);
 registerExactEvmScheme(client, { signer });
 
-// Parse requirements from the response body or the X-PAYMENT-REQUIRED header
+// Parse requirements from the response body or the PAYMENT-REQUIRED header
 const paymentRequired = await firstResponse.json();
-// — or: decodePaymentRequiredHeader(firstResponse.headers.get("x-payment-required"))
+// — or: decodePaymentRequiredHeader(firstResponse.headers.get("payment-required"))
 const paymentPayload = await client.createPaymentPayload(paymentRequired);
 const paymentSignature = encodePaymentSignatureHeader(paymentPayload);
 ```
@@ -273,7 +273,7 @@ The server settles your authorization asynchronously via a cron that runs every 
 
 When a poll returns `402`, the research is already **complete** on the server. Your original authorization simply expired before the cron could settle it. To retrieve results:
 
-1. Parse the new payment requirements from the `402` response (body or `X-PAYMENT-REQUIRED` header)
+1. Parse the new payment requirements from the `402` response (body or `PAYMENT-REQUIRED` header)
 2. Sign a fresh authorization for the same price
 3. GET the same URL with the `PAYMENT-SIGNATURE` header:
 

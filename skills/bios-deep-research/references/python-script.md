@@ -8,7 +8,7 @@ Supports two wallet backends with auto-detection:
 
 This script uses the currently working x402 v2 flow for BIOS:
 - request research job
-- parse payment requirements from JSON body or X-PAYMENT-REQUIRED header
+- parse payment requirements from JSON body or AYMENT-REQUIRED header
 - create PAYMENT-SIGNATURE via a small Node helper using @x402/core/@x402/evm
 - retry the request
 - optionally poll until completion
@@ -41,7 +41,7 @@ BASE_URL = os.environ.get("BIOS_X402_BASE_URL", "https://x402.ai.bio.xyz")
 SCRIPT_DIR = Path(__file__).resolve().parent
 NODE_DEPS_DIR = SCRIPT_DIR / ".node-deps"
 SIGNER_JS = SCRIPT_DIR / "research_signer.mjs"
-PAYMENT_REQUIRED_HEADERS = ["X-PAYMENT-REQUIRED", "x-payment-required", "PAYMENT-REQUIRED", "payment-required"]
+PAYMENT_REQUIRED_HEADERS = ["PAYMENT-REQUIRED", "payment-required"]
 
 
 def load_cdp_creds_from_defaults() -> None:
