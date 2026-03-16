@@ -7,17 +7,6 @@ description: Participate in Bio Protocol launches on Base. Handles wallet regist
 
 Participate in Bio Protocol launches on Base (chain ID 8453).
 
-## Safety rules
-
-Follow these for every wallet-affecting action:
-
-1. **Never send a write transaction without explicit user confirmation.** Read-only checks (balances, allowances, launch status) are always fine.
-2. **Show a transaction summary before signing.** Include: network, wallet address, launch name/ID, contract address, token symbol + address, human-readable and raw amount, function name.
-3. **Use exact approvals.** Do not approve unlimited spend unless the user explicitly asks for it and understands the risk.
-4. **Verify chain and addresses.** Confirm the chain is Base (8453). Use contract addresses returned by the Bio launch API, not stale hardcoded values.
-5. **Secure key handling.** Load private keys from environment variables or a secure wallet integration. Never hardcode, log, or print secrets.
-6. **Fail closed.** If any data looks wrong or incomplete - launch status, decimals, contract address, claim proof - stop and ask the user before proceeding.
-
 ## Workflow
 
 1. Register the wallet (one-time, idempotent)
@@ -135,44 +124,7 @@ Implementation notes:
 - If approve succeeds but participate reverts, inform the user that the allowance is still set and they can retry participate without re-approving.
 - For sequential transactions (approve then participate), either increment the nonce manually or wait for the first receipt before building the second tx.
 
-```python
-def approve_and_participate(launch_contract: str, base_token: str, amount: int, max_contribution: int):
-    launch_contract = Web3.to_checksum_address(launch_contract)
-    base_token = Web3.to_checksum_address(base_token)
-
-    # Preflight: check cumulative contribution against cap
-    contract = w3.eth.contract(address=launch_contract, abi=LAUNCH_ABI)
-    current = contract.functions.mapAddrToBios(ADDRESS).call()
-    if current + amount > max_contribution:
-        raise ValueError(f"Would exceed max contribution: {current} existing + {amount} new > {max_contribution}")
-
-    # Approve
-    token = w3.eth.contract(address=base_token, abi=ERC20_ABI)
-    approve_tx = token.functions.approve(launch_contract, amount).build_transaction({
-        "from": ADDRESS,
-        "nonce": w3.eth.get_transaction_count(ADDRESS),
-        "chainId": CHAIN_ID,
-    })
-    approve_tx["gas"] = w3.eth.estimate_gas(approve_tx)
-    receipt = w3.eth.wait_for_transaction_receipt(
-        w3.eth.send_raw_transaction(account.sign_transaction(approve_tx).raw_transaction)
-    )
-    assert receipt.status == 1, "Approve transaction reverted"
-
-    # Participate
-    participate_tx = contract.functions.participate(amount).build_transaction({
-        "from": ADDRESS,
-        "nonce": w3.eth.get_transaction_count(ADDRESS),
-        "chainId": CHAIN_ID,
-    })
-    participate_tx["gas"] = w3.eth.estimate_gas(participate_tx)
-    receipt = w3.eth.wait_for_transaction_receipt(
-        w3.eth.send_raw_transaction(account.sign_transaction(participate_tx).raw_transaction)
-    )
-    assert receipt.status == 1, "Participate transaction reverted"
-```
-
-ABI variables (`ERC20_ABI`, `LAUNCH_ABI`) are defined in `references/ABIS.md`.
+Code example: `{baseDir}/references/code-examples.md` — **approve_and_participate**. ABIs: `{baseDir}/references/ABIS.md`.
 
 ## Step 5 - Claim after finalization
 
@@ -198,34 +150,7 @@ Before claiming, verify:
 
 Then show a summary and get user confirmation before calling `claimTokens(refundAmount, claimAmount, proof)`.
 
-```python
-def claim_tokens(launch_id: int):
-    path = f"/api/agent-api/launches/{launch_id}/claim"
-    resp = requests.get(BASE_URL + path, headers=sign_auth_headers("GET", path))
-    resp.raise_for_status()
-    data = resp.json()
-
-    contract_addr = Web3.to_checksum_address(data["contractAddress"])
-    contract = w3.eth.contract(address=contract_addr, abi=LAUNCH_ABI)
-
-    # Check if already claimed
-    if contract.functions.claimed(ADDRESS).call():
-        raise ValueError("Wallet has already claimed for this launch")
-
-    proof = [bytes.fromhex(p.removeprefix("0x")) for p in data["merkleProof"]]
-    tx = contract.functions.claimTokens(
-        int(data["refundAmount"]), int(data["claimAmount"]), proof
-    ).build_transaction({
-        "from": ADDRESS,
-        "nonce": w3.eth.get_transaction_count(ADDRESS),
-        "chainId": CHAIN_ID,
-    })
-    tx["gas"] = w3.eth.estimate_gas(tx)
-    receipt = w3.eth.wait_for_transaction_receipt(
-        w3.eth.send_raw_transaction(account.sign_transaction(tx).raw_transaction)
-    )
-    assert receipt.status == 1, "Claim transaction reverted"
-```
+Code example: `{baseDir}/references/code-examples.md` — **claim_tokens**.
 
 If the claim API is unavailable or returns an error, do not guess parameters. Wait and retry later.
 
@@ -235,23 +160,7 @@ If the launch failed or was cancelled, call `withdrawTokensIfLaunchFails()` on t
 
 Confirm the launch status before withdrawing. Show the contract address, expected token refund, and function name, then get user confirmation.
 
-```python
-def withdraw_if_failed(launch_contract: str):
-    contract = w3.eth.contract(
-        address=Web3.to_checksum_address(launch_contract),
-        abi=LAUNCH_ABI,
-    )
-    tx = contract.functions.withdrawTokensIfLaunchFails().build_transaction({
-        "from": ADDRESS,
-        "nonce": w3.eth.get_transaction_count(ADDRESS),
-        "chainId": CHAIN_ID,
-    })
-    tx["gas"] = w3.eth.estimate_gas(tx)
-    receipt = w3.eth.wait_for_transaction_receipt(
-        w3.eth.send_raw_transaction(account.sign_transaction(tx).raw_transaction)
-    )
-    assert receipt.status == 1, "Withdraw transaction reverted"
-```
+Code example: `{baseDir}/references/code-examples.md` — **withdraw_if_failed**.
 
 ## Transaction summary format
 
@@ -291,4 +200,16 @@ These are common at time of writing. Always confirm against the `/launches` API 
 
 ## References
 
-- Full contract ABIs: [`references/ABIS.md`](references/ABIS.md)
+- Contract ABIs: [`references/ABIS.md`](references/ABIS.md)
+- Code examples (approve_and_participate, claim_tokens, withdraw_if_failed): [`references/code-examples.md`](references/code-examples.md)
+
+## Guardrails
+
+Follow these for every wallet-affecting action:
+
+1. **Never send a write transaction without explicit user confirmation.** Read-only checks (balances, allowances, launch status) are always fine.
+2. **Show a transaction summary before signing.** Include: network, wallet address, launch name/ID, contract address, token symbol + address, human-readable and raw amount, function name.
+3. **Use exact approvals.** Do not approve unlimited spend unless the user explicitly asks for it and understands the risk.
+4. **Verify chain and addresses.** Confirm the chain is Base (8453). Use contract addresses returned by the Bio launch API, not stale hardcoded values.
+5. **Secure key handling.** Load private keys from environment variables or a secure wallet integration. Never hardcode, log, or print secrets.
+6. **Fail closed.** If any data looks wrong or incomplete - launch status, decimals, contract address, claim proof - stop and ask the user before proceeding.
