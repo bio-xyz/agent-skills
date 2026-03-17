@@ -15,8 +15,9 @@ Participate in Bio Protocol launches on Base (chain ID 8453).
 4. Check wallet balance and existing allowance
 5. If needed, approve the exact amount → get user confirmation first
 6. Participate on-chain → get user confirmation first
-7. After finalization, fetch claim data and claim → get user confirmation first
-8. If the launch failed, withdraw instead → get user confirmation first
+7. Poll launch status to check outcome (active → finalizing → success/failed/cancelled)
+8. After success, fetch claim data and claim → get user confirmation first
+9. If the launch failed, withdraw instead → get user confirmation first
 
 ## Authentication
 
@@ -68,32 +69,80 @@ Confirm with the user before calling if registration status is unclear.
 
 ## Step 2 - Discover launches
 
-`GET /api/agent-api/launches` - returns active launches.
+`GET /api/agent-api/launches` - returns all launches with their current phase.
 
 Response shape:
 ```json
 {
   "chainId": 8453,
-  "contracts": {},
+  "contracts": { "bioToken": "0x...", "launchFactory": "0x...", "usdcToken": "0x..." },
   "launches": [
     {
       "launchId": 1,
       "name": "Example BioDAO",
       "ticker": "EXDAO",
       "contractAddress": "0x...",
-      "startTime": "2025-07-01T00:00:00Z",
-      "endTime": "2025-07-08T00:00:00Z",
-      "baseToken": "0x...BIO or USDC address...",
+      "phase": "active",
+      "startTime": 1719792000,
+      "endTime": 1720396800,
+      "baseToken": "BIO",
       "baseTokenDecimals": 18,
       "maxContribution": "1000000000000000000000",
-      "reserve": "...",
-      "started": true
+      "fundraisingGoal": "500000000000000000000000",
+      "totalCommitted": "123000000000000000000000",
+      "contributors": 42,
+      "tokenAddress": "0x...",
+      "totalSupply": "1000000000000000000000000000",
+      "saleAllocation": "200000000000000000000000000"
     }
   ]
 }
 ```
 
+The `phase` field indicates what actions are available:
+- `upcoming` → not yet open for participation
+- `active` → can participate
+- `finalizing` → launch ended, awaiting off-chain finalization (poll periodically)
+- `success` → finalized (ended), tokens claimable via `/launches/{launchId}/claim`
+- `failed` / `cancelled` → call `withdrawTokensIfLaunchFails()` on-chain
+
+Tokenomics fields:
+- `tokenAddress` — the ERC-20 token created by the launch (zero address until finalized). This is what you receive when claiming.
+- `totalSupply` — total token supply (raw units, 18 decimals)
+- `saleAllocation` — portion of supply allocated to participants (raw units, 18 decimals)
+
 Present launch options clearly before any on-chain action. Pay attention to `baseToken` and `baseTokenDecimals` - BIO uses 18 decimals, USDC uses 6.
+
+### Check a specific launch
+
+`GET /api/agent-api/launches/{launchId}` - returns detailed status for a single launch including wallet-specific data.
+
+Response shape:
+```json
+{
+  "launchId": 1,
+  "name": "Example BioDAO",
+  "ticker": "EXDAO",
+  "contractAddress": "0x...",
+  "chainId": 8453,
+  "phase": "success",
+  "startTime": 1719792000,
+  "endTime": 1720396800,
+  "baseToken": "BIO",
+  "baseTokenDecimals": 18,
+  "maxContribution": "1000000000000000000000",
+  "fundraisingGoal": "500000000000000000000000",
+  "totalCommitted": "450000000000000000000000",
+  "contributors": 128,
+  "tokenAddress": "0x...",
+  "totalSupply": "1000000000000000000000000000",
+  "saleAllocation": "200000000000000000000000000",
+  "walletContribution": "5000000000000000000000",
+  "walletHasClaimed": false
+}
+```
+
+Use this endpoint to check your position: contribution amount, claim status, and current phase.
 
 ## Step 3 - Preflight checks
 
@@ -128,7 +177,7 @@ Code example: `{baseDir}/references/code-examples.md` — **approve_and_particip
 
 ## Step 5 - Claim after finalization
 
-After the launch ends and is finalized off-chain by the platform, fetch claim data:
+Once `phase` is `success` (check via `/launches` or `/launches/{launchId}`), fetch claim data:
 
 `GET /api/agent-api/launches/{launchId}/claim`
 
@@ -156,9 +205,9 @@ If the claim API is unavailable or returns an error, do not guess parameters. Wa
 
 ## Step 6 - Withdraw if launch failed
 
-If the launch failed or was cancelled, call `withdrawTokensIfLaunchFails()` on the launch contract.
+If `phase` is `failed` or `cancelled`, call `withdrawTokensIfLaunchFails()` on the launch contract.
 
-Confirm the launch status before withdrawing. Show the contract address, expected token refund, and function name, then get user confirmation.
+Show the contract address, expected token refund, and function name, then get user confirmation.
 
 Code example: `{baseDir}/references/code-examples.md` — **withdraw_if_failed**.
 
