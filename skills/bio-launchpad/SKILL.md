@@ -1,6 +1,6 @@
 ---
 name: bio-launchpad
-description: Participate in Bio Protocol launches on Base. Handles wallet registration, launch discovery, on-chain participation (approve + commit), claiming allocations, and withdrawals. Use when the user wants to join, contribute to, claim from, or withdraw from a Bio Launchpad launch on Base, or when they mention Bio Protocol token sales, Bio launchpad, or agent launch participation.
+description: Participate in Bio Protocol token launches on Base. Handles wallet registration, launch discovery, on-chain participation (approve + commit), claiming allocations, and withdrawals. Use when the user wants to join, contribute to, claim from, or withdraw from a Bio Launchpad launch, or mentions Bio Protocol token sales or agent launch participation.
 ---
 
 # Bio Launchpad - Agent Participation
@@ -15,8 +15,9 @@ Participate in Bio Protocol launches on Base (chain ID 8453).
 4. Check wallet balance and existing allowance
 5. If needed, approve the exact amount → get user confirmation first
 6. Participate on-chain → get user confirmation first
-7. After finalization, fetch claim data and claim → get user confirmation first
-8. If the launch failed, withdraw instead → get user confirmation first
+7. Poll launch status to check outcome (active → finalizing → merkle_success → completed / failed / cancelled)
+8. After merkle_success or completed, fetch claim data and claim → get user confirmation first
+9. If the launch failed, withdraw instead → get user confirmation first
 
 ## Authentication
 
@@ -46,7 +47,7 @@ def sign_auth_headers(method: str, path: str) -> dict:
     signed = account.sign_message(encode_defunct(text=message))
     return {
         "X-Agent-Address": account.address,
-        "X-Agent-Signature": signed.signature.hex(),
+        "X-Agent-Signature": "0x" + signed.signature.hex(),
         "X-Agent-Timestamp": timestamp,
     }
 ```
@@ -68,32 +69,83 @@ Confirm with the user before calling if registration status is unclear.
 
 ## Step 2 - Discover launches
 
-`GET /api/agent-api/launches` - returns active launches.
+`GET /api/agent-api/launches` - returns all launches with their current phase.
 
 Response shape:
 ```json
 {
   "chainId": 8453,
-  "contracts": {},
+  "contracts": { "bioToken": "0x...", "launchFactory": "0x...", "usdcToken": "0x..." },
   "launches": [
     {
       "launchId": 1,
       "name": "Example BioDAO",
       "ticker": "EXDAO",
       "contractAddress": "0x...",
-      "startTime": "2025-07-01T00:00:00Z",
-      "endTime": "2025-07-08T00:00:00Z",
-      "baseToken": "0x...BIO or USDC address...",
+      "phase": "active",
+      "startTime": 1719792000,
+      "endTime": 1720396800,
+      "baseToken": "BIO",
       "baseTokenDecimals": 18,
       "maxContribution": "1000000000000000000000",
-      "reserve": "...",
-      "started": true
+      "fundraisingGoal": "500000000000000000000000",
+      "totalCommitted": "123000000000000000000000",
+      "contributors": 42,
+      "tokenAddress": "0x...",
+      "totalSupply": "1000000000000000000000000000",
+      "saleAllocation": "200000000000000000000000000"
     }
   ]
 }
 ```
 
+The `phase` field indicates what actions are available:
+- `upcoming` → not yet open for participation
+- `active` → can participate
+- `finalizing` → launch ended, awaiting off-chain finalization (poll periodically)
+- `merkle_success` → finalized off-chain (Merkle root exists), tokens claimable via `/launches/{launchId}/claim`
+- `completed` → fully settled on-chain, tokens claimable if not already claimed
+- `failed` / `cancelled` → call `withdrawTokensIfLaunchFails()` on-chain
+
+Tokenomics fields:
+- `tokenAddress` — the ERC-20 token created by the launch. This is what you receive when claiming.
+- `totalSupply` — total token supply (raw units, 18 decimals)
+- `saleAllocation` — portion of supply allocated to participants (raw units, 18 decimals)
+
 Present launch options clearly before any on-chain action. Pay attention to `baseToken` and `baseTokenDecimals` - BIO uses 18 decimals, USDC uses 6.
+
+To resolve the base token ERC-20 address for approvals: if `baseToken` is `"BIO"`, use `contracts.bioToken` from the `/launches` response; if `"USDC"`, use `contracts.usdcToken`. Do not hardcode token addresses -- always use the values from the API response.
+
+### Check a specific launch
+
+`GET /api/agent-api/launches/{launchId}` - returns detailed status for a single launch including wallet-specific data.
+
+Response shape:
+```json
+{
+  "launchId": 1,
+  "name": "Example BioDAO",
+  "ticker": "EXDAO",
+  "contractAddress": "0x...",
+  "chainId": 8453,
+  "phase": "merkle_success",
+  "startTime": 1719792000,
+  "endTime": 1720396800,
+  "baseToken": "BIO",
+  "baseTokenDecimals": 18,
+  "maxContribution": "1000000000000000000000",
+  "fundraisingGoal": "500000000000000000000000",
+  "totalCommitted": "450000000000000000000000",
+  "contributors": 128,
+  "tokenAddress": "0x...",
+  "totalSupply": "1000000000000000000000000000",
+  "saleAllocation": "200000000000000000000000000",
+  "walletContribution": "5000000000000000000000",
+  "walletHasClaimed": false
+}
+```
+
+Use this endpoint to check your position: contribution amount, claim status, and current phase.
 
 ## Step 3 - Preflight checks
 
@@ -108,7 +160,7 @@ Before any approval or participation, verify all of:
 - Wallet has sufficient token balance (`balanceOf`)
 - Current allowance is checked (`allowance`) - skip approval if already sufficient
 - Cumulative contribution checked on-chain (`mapAddrToBios`) - requested amount must not exceed `maxContribution` minus existing contribution
-- For claims: check `claimed(address)` on-chain before attempting `claimTokens()` to avoid wasting gas
+- For claims: check `walletHasClaimed` from `/launches/{launchId}`, or `claimed(address)` on-chain, before attempting `claimTokens()` to avoid wasting gas
 
 ## Step 4 - Approve + participate
 
@@ -128,17 +180,21 @@ Code example: `{baseDir}/references/code-examples.md` — **approve_and_particip
 
 ## Step 5 - Claim after finalization
 
-After the launch ends and is finalized off-chain by the platform, fetch claim data:
+Once `phase` is `merkle_success` or `completed` (check via `/launches` or `/launches/{launchId}`), fetch claim data:
 
 `GET /api/agent-api/launches/{launchId}/claim`
 
 Response shape:
 ```json
 {
+  "launchId": 1,
   "contractAddress": "0x...",
+  "walletAddress": "0x...",
   "refundAmount": "500000000000000000",
   "claimAmount": "1000000000000000000000",
-  "merkleProof": ["0xabc...", "0xdef..."]
+  "pointsRefund": "100",
+  "merkleProof": ["0xabc...", "0xdef..."],
+  "merkleRoot": "0x..."
 }
 ```
 
@@ -146,7 +202,7 @@ Before claiming, verify:
 - `contractAddress` matches the expected launch contract
 - `claimAmount` and `refundAmount` are present and plausible
 - `merkleProof` is non-empty
-- The wallet has not already claimed - call `claimed(address)` on-chain first
+- The wallet has not already claimed - check `walletHasClaimed` from `/launches/{launchId}` first, or verify on-chain with `claimed(address)` as a fallback
 
 Then show a summary and get user confirmation before calling `claimTokens(refundAmount, claimAmount, proof)`.
 
@@ -156,9 +212,9 @@ If the claim API is unavailable or returns an error, do not guess parameters. Wa
 
 ## Step 6 - Withdraw if launch failed
 
-If the launch failed or was cancelled, call `withdrawTokensIfLaunchFails()` on the launch contract.
+If `phase` is `failed` or `cancelled`, call `withdrawTokensIfLaunchFails()` on the launch contract.
 
-Confirm the launch status before withdrawing. Show the contract address, expected token refund, and function name, then get user confirmation.
+Show the contract address, expected token refund, and function name, then get user confirmation.
 
 Code example: `{baseDir}/references/code-examples.md` — **withdraw_if_failed**.
 
@@ -176,6 +232,8 @@ Amount:   <human amount> <symbol> (<raw amount> raw)
 Action:   <approve | participate | claim | withdraw>
 ```
 
+All token amounts from the API are raw integer strings. Convert to human-readable: `human = int(raw) / 10 ** baseTokenDecimals` (18 for BIO, 6 for USDC). Always display both the human-readable and raw values in the summary.
+
 Then ask: "Confirm to proceed?"
 
 ## Edge cases
@@ -188,6 +246,24 @@ Then ask: "Confirm to proceed?"
 - **Claim already completed** - do not send another claim tx. Check on-chain first if possible.
 - **Claim API unavailable after finalization** - retry later, do not fabricate proof data.
 - **Contract address changed unexpectedly** - stop and ask for human review.
+
+## Error responses
+
+All error responses return JSON with a single `error` field:
+
+```json
+{ "error": "Human-readable error message" }
+```
+
+| Status | Meaning |
+|---|---|
+| `400` | Bad request (invalid params or state) |
+| `401` | Authentication failure (missing/expired/invalid signature) |
+| `404` | Resource not found |
+| `500` | Unexpected server error |
+| `502` | Upstream failure (contract read or subgraph) |
+
+On `401`, re-sign with a fresh timestamp and retry once. On `502`, retry after a short delay. On `400`/`404`, check your parameters before retrying.
 
 ## Known token addresses (verify before use)
 
