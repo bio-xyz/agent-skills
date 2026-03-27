@@ -48,18 +48,79 @@ curl -s -X POST https://x402.ai.bio.xyz/api/deep-research/start \
   -d '{"message":"What is NAD+?","researchMode":"steering"}'
 # → 200 with conversationId
 
-# 4. Poll
-curl -s https://x402.ai.bio.xyz/api/deep-research/{conversationId}
+# 4. Poll — requires SIWX auth (cannot use plain curl)
+# The poll endpoint returns 401 with an SIWX challenge that must be signed
+# by the paying wallet. Use the reference Python/Node scripts instead.
+# See {baseDir}/references/siwx-protocol.md for the full protocol.
 
 # 5. (Optional) Fetch feedback data for on-chain submission
 curl -s https://x402.ai.bio.xyz/api/feedback/{conversationId}
+```
+
+## Polling with SIWX (TypeScript)
+
+The poll endpoint requires SIWX authentication. Here is the TypeScript flow (from the reference implementation):
+
+```typescript
+import { createSiweMessage } from "viem/siwe";
+
+type SiwxChallenge = {
+  domain: string;
+  uri: string;
+  nonce: string;
+  chainId: number;
+  statement: string;
+  version: "1";
+  issuedAt: string;
+  expirationTime: string;
+};
+
+async function signSiwxChallenge(challenge: SiwxChallenge, account: LocalAccount): Promise<string> {
+  const message = createSiweMessage({
+    address: account.address,
+    domain: challenge.domain,
+    uri: challenge.uri,
+    nonce: challenge.nonce,
+    chainId: challenge.chainId,
+    statement: challenge.statement,
+    version: challenge.version,
+    issuedAt: new Date(challenge.issuedAt),
+    expirationTime: new Date(challenge.expirationTime),
+  });
+  const signature = await account.signMessage({ message });
+  return Buffer.from(JSON.stringify({ message, signature })).toString("base64");
+}
+
+// Poll loop
+let res = await fetch(`${BASE}/api/deep-research/${conversationId}`);
+
+if (res.status === 401) {
+  const { siwx } = await res.json();
+  const siwxHeader = await signSiwxChallenge(siwx, account);
+  res = await fetch(`${BASE}/api/deep-research/${conversationId}`, {
+    headers: { "X-SIWX": siwxHeader },
+  });
+}
+
+// For timeout retry (402 after SIWX), send both headers:
+if (res.status === 402) {
+  const paymentSig = /* sign fresh x402 payment */;
+  // Fetch a fresh SIWX challenge
+  const challengeRes = await fetch(`${BASE}/api/deep-research/${conversationId}`);
+  const { siwx } = await challengeRes.json();
+  const siwxHeader = await signSiwxChallenge(siwx, account);
+
+  res = await fetch(`${BASE}/api/deep-research/${conversationId}`, {
+    headers: { "X-SIWX": siwxHeader, "PAYMENT-SIGNATURE": paymentSig },
+  });
+}
 ```
 
 ## Reference implementation (x402)
 
 A Python script for the x402 path is at `{baseDir}/references/python-script.md`. It delegates EIP-712 signing to a Node helper at `{baseDir}/references/research_signer.md`.
 
-These scripts handle x402 payment negotiation only. For the API key path, a simple `curl` or `httpx`/`requests` call with a Bearer header is all you need (see curl examples above).
+These scripts handle x402 payment negotiation and SIWX poll authentication. For the API key path, a simple `curl` or `httpx`/`requests` call with a Bearer header is all you need (see curl examples above).
 
 Usage:
 

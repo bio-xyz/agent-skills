@@ -39,16 +39,24 @@ No API key needed. Base URL: `https://x402.ai.bio.xyz`
 
 Pay per request with USDC on Base. Send a JSON request, receive `402 Payment Required`, sign an EIP-712 authorization, resubmit with `PAYMENT-SIGNATURE` header. See the full x402 protocol in the **API Protocol (manual)** section below.
 
-## Protocol compatibility (x402)
+### SIWX — Poll endpoint authentication (x402 path)
 
-This skill uses **x402 v2**, not x402 v1.
+The GET poll endpoint (`/api/deep-research/{conversationId}`) requires **SIWX (Sign-In With X)** authentication. This ensures only the wallet that paid for the research can read the results.
+
+SIWX uses [SIWE (EIP-4361)](https://eips.ethereum.org/EIPS/eip-4361) messages signed with `personal_sign` (EIP-191) — not EIP-712. Each poll request requires a fresh challenge-response cycle: plain GET → 401 with challenge → sign → retry with `X-SIWX` header.
+
+The signing wallet must be the **same wallet** that paid in Step 3. See Step 4 and `{baseDir}/references/siwx-protocol.md` for the full protocol.
+
+## Protocol compatibility (x402 + SIWX)
+
+This skill uses **x402 v2**, not x402 v1. Polling uses **SIWX** (SIWE-based wallet auth).
 
 Important:
 - The 402 response includes payment requirements in **both** the JSON response body and the `PAYMENT-REQUIRED` header (base64-encoded). Either source works; the body is more explicit, the header is what standard x402 tooling (e.g. `@x402/fetch`) expects
 - Use the paid retry header `PAYMENT-SIGNATURE`
 - Do **not** default to v1-style `X-PAYMENT`
-- `awal` is optional. If `awal` is unavailable, use a direct signer path such as CDP SDK + `@x402/core` / `@x402/evm`
 - Do **not** trust `extensions.bazaar.info.input.body` as the canonical user query. It may contain example metadata rather than the actual submitted request body
+- **Polling requires SIWX auth.** Every GET to `/api/deep-research/{conversationId}` returns 401 unless an `X-SIWX` header is present with a valid signed SIWE message from the paying wallet. See Step 4 and `{baseDir}/references/siwx-protocol.md`
 
 ## Pricing
 
@@ -64,7 +72,7 @@ The **auth window** (`maxTimeoutSeconds`, x402 only) is how long your signed aut
 
 - HTTP client (curl, Python httpx/requests, Node fetch, etc.)
 - **API key path:** `BIOS_API_KEY` env var
-- **x402 path:** A wallet on **Base** (chain ID 8453) that can sign EIP-712 typed data, with USDC balance sufficient for the chosen mode
+- **x402 path:** A wallet on **Base** (chain ID 8453) that can sign EIP-712 typed data (for x402 payments) and `personal_sign` / EIP-191 messages (for SIWX poll auth), with USDC balance sufficient for the chosen mode
 - **(Optional, for feedback only)** A small ETH balance on Base for gas (~$0.001 per feedback transaction)
 
 ### Wallet options
@@ -73,54 +81,12 @@ Any wallet that can produce EIP-712 signatures works. Common setups:
 
 | Method | How | Best for |
 |--------|-----|----------|
-| **Coinbase Agentic Wallet** | [`npx awal`](https://docs.cdp.coinbase.com/agentic-wallet/welcome) - CLI with built-in x402 support. Handles 402 detection, EIP-712 signing, and authorization in one command. No private key management; keys live in Coinbase's TEE. | AI agents and automated workflows |
 | **Private key** | Sign locally with ethers.js, web3.py, eth_account, viem, etc. | Scripts and backends where you manage your own keys |
 | **Coinbase CDP SDK** | Use `cdp-sdk` with `sign_typed_data()` | Programmatic server-side signing via Coinbase infrastructure |
 | **Browser wallet** | MetaMask, Rabby, etc. via `eth_signTypedData_v4` | Interactive/manual use |
 | **MPC / multisig** | Any signer that produces a valid EIP-712 signature | Custom custody setups |
 
-## Quickstart: Coinbase Agentic Wallet (optional convenience path)
-
-If `awal` is unavailable, skip to the manual x402 v2 flow below.
-
-If `awal` is available in your environment, it can handle x402 payment negotiation (steps 1-3 below) in a single command. However, `awal` is **not required**. If it is unavailable or does not work, fall back to the manual protocol below using a direct signer (CDP SDK, private key, or any EIP-712-capable signer with `@x402/core` / `@x402/evm`).
-
-**One-time setup:**
-
-```bash
-# Authenticate (email OTP)
-npx awal auth login user@example.com
-npx awal auth verify <flowId> <otp>
-
-# Confirm wallet is ready and has USDC balance
-npx awal status
-npx awal balance
-```
-
-**Run a research query (handles 402 → sign → authorize automatically):**
-
-```bash
-npx awal x402 pay https://x402.ai.bio.xyz/api/deep-research/start \
-  -X POST \
-  -d '{"message":"Your research query here","researchMode":"steering"}' \
-  --max-amount 200000
-```
-
-This returns a `conversationId`. Then poll for results:
-
-```bash
-curl -s https://x402.ai.bio.xyz/api/deep-research/{conversationId}
-```
-
-You can also inspect pricing before authorizing:
-
-```bash
-npx awal x402 details https://x402.ai.bio.xyz/api/deep-research/start
-```
-
-For the full manual protocol (private key, CDP SDK, or other signers), see below.
-
-## API Protocol (manual)
+## API Protocol
 
 ### Base URL
 
@@ -256,13 +222,30 @@ header_value = encode_payment_signature_header(payment_payload)
 }
 ```
 
-### Step 4: Poll for results
+### Step 4: Poll for results (SIWX auth required)
 
 ```
 GET /api/deep-research/{conversationId}
 ```
 
-Poll every 60 seconds. Status values:
+The poll endpoint requires **SIWX authentication** — only the wallet that paid can read results. Every poll request goes through a challenge-response flow:
+
+1. Send a plain GET → server returns **`401`** with an SIWX challenge in the response body
+2. Build a [SIWE (EIP-4361)](https://eips.ethereum.org/EIPS/eip-4361) message from the challenge fields + your wallet address
+3. Sign with `personal_sign` (EIP-191) using the **same wallet that paid** in Step 3
+4. Base64-encode `JSON.stringify({ message, signature })`
+5. Retry the GET with the `X-SIWX` header:
+
+```
+GET /api/deep-research/{conversationId}
+X-SIWX: <base64-encoded JSON { message, signature }>
+```
+
+Challenges are single-use (fresh nonce each time), so every poll iteration starts with a plain GET to obtain a new challenge.
+
+For the full SIWX protocol details (message format, signing examples in TypeScript and Python), see `{baseDir}/references/siwx-protocol.md`.
+
+Poll every 60 seconds. Status values after successful SIWX auth:
 - `queued` → research still running, keep polling
 - `completed` → results are in the response body (USDC was already settled server-side)
 - `402 Payment Required` → the original authorization expired before settlement; see **Step 4a** below
@@ -275,10 +258,13 @@ When a poll returns `402`, the research is already **complete** on the server. Y
 
 1. Parse the new payment requirements from the `402` response (body or `PAYMENT-REQUIRED` header)
 2. Sign a fresh authorization for the same price
-3. GET the same URL with the `PAYMENT-SIGNATURE` header:
+3. Fetch a fresh SIWX challenge (plain GET → 401 → extract `siwx` from body)
+4. Sign the SIWX challenge with your wallet
+5. GET the same URL with **both** headers:
 
 ```
 GET /api/deep-research/{conversationId}
+X-SIWX: <base64-encoded SIWX payload>
 PAYMENT-SIGNATURE: <base64-encoded new x402 v2 payment payload>
 ```
 
@@ -353,8 +339,9 @@ Paginate with the `cursor` query parameter. Response contains `data`, `nextCurso
 
 **x402 path:**
 - `402` — Expected on the first request. This is the start of the payment flow (see Step 1).
-- `400` — Invalid or malformed payment signature. Re-sign and retry.
-- `402` on poll — Authorization expired before settlement. Sign a fresh authorization and retry (see Step 4a). No funds were lost.
+- `401` on poll — SIWX challenge required. The response body contains an `siwx` object. Sign the challenge with the paying wallet and retry with `X-SIWX` header (see Step 4).
+- `400` — Invalid or malformed payment signature or SIWX header. Re-sign and retry.
+- `402` on poll — Authorization expired before settlement. Sign a fresh authorization **and** a fresh SIWX challenge, then retry with both headers (see Step 4a). No funds were lost.
 - Insufficient USDC balance — Cannot sign a valid authorization. Report to operator, suggest topping up the wallet.
 - `5xx` — Server error. Retry later.
 

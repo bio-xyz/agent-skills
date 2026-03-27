@@ -8,14 +8,16 @@ Supports two wallet backends with auto-detection:
 
 This script uses the currently working x402 v2 flow for BIOS:
 - request research job
-- parse payment requirements from JSON body or AYMENT-REQUIRED header
+- parse payment requirements from JSON body or PAYMENT-REQUIRED header
 - create PAYMENT-SIGNATURE via a small Node helper using @x402/core/@x402/evm
+- authenticate poll requests via SIWX (SIWE wallet signatures)
 - retry the request
 - optionally poll until completion
 
 Requirements in this environment:
 - python3
 - node + npm
+- eth_account (pip install eth-account)
 
 Usage examples:
 python3 research.py --dry-run "What is NAD+?"
@@ -37,11 +39,49 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from eth_account import Account
+from eth_account.messages import encode_defunct
+
 BASE_URL = os.environ.get("BIOS_X402_BASE_URL", "https://x402.ai.bio.xyz")
 SCRIPT_DIR = Path(__file__).resolve().parent
 NODE_DEPS_DIR = SCRIPT_DIR / ".node-deps"
 SIGNER_JS = SCRIPT_DIR / "research_signer.mjs"
 PAYMENT_REQUIRED_HEADERS = ["PAYMENT-REQUIRED", "payment-required"]
+
+
+def _get_wallet_account() -> Account:
+    pk = os.environ.get("WALLET_PRIVATE_KEY")
+    if pk:
+        return Account.from_key(pk)
+    raise RuntimeError(
+        "SIWX signing requires WALLET_PRIVATE_KEY. "
+        "CDP wallet SIWX signing is not yet supported in this script."
+    )
+
+
+def _build_siwe_message(challenge: dict, wallet_address: str) -> str:
+    return (
+        f"{challenge['domain']} wants you to sign in with your Ethereum account:\n"
+        f"{wallet_address}\n"
+        f"\n"
+        f"{challenge['statement']}\n"
+        f"\n"
+        f"URI: {challenge['uri']}\n"
+        f"Version: {challenge['version']}\n"
+        f"Chain ID: {challenge['chainId']}\n"
+        f"Nonce: {challenge['nonce']}\n"
+        f"Issued At: {challenge['issuedAt']}\n"
+        f"Expiration Time: {challenge['expirationTime']}"
+    )
+
+
+def sign_siwx_challenge(challenge: dict) -> str:
+    """Sign an SIWX challenge and return the base64-encoded X-SIWX header value."""
+    account = _get_wallet_account()
+    message = _build_siwe_message(challenge, account.address)
+    signed = account.sign_message(encode_defunct(text=message))
+    payload = json.dumps({"message": message, "signature": "0x" + signed.signature.hex()})
+    return base64.b64encode(payload.encode()).decode()
 
 
 def load_cdp_creds_from_defaults() -> None:
@@ -152,7 +192,7 @@ json.dump(payment_required, f)
 tmp_path = f.name
 try:
 proc = subprocess.run(
-["node", str(SIGNER_JS), tmp_path],
+["node", str(SIGNER_JS), "payment", tmp_path],
 cwd=NODE_DEPS_DIR,
 check=True,
 capture_output=True,
@@ -198,33 +238,47 @@ return result
 
 
 def fetch_status(conversation_id: str, payment_sig: str | None = None) -> tuple[int, dict]:
-headers = {"PAYMENT-SIGNATURE": payment_sig} if payment_sig else None
-status, resp_headers, text = http_request("GET", f"{BASE_URL}/api/deep-research/{conversation_id}", headers=headers)
-if status in (200, 402):
-return status, json.loads(text)
-raise RuntimeError(f"Unexpected poll status {status}: {text[:1000]}")
+    url = f"{BASE_URL}/api/deep-research/{conversation_id}"
+    req_headers: dict[str, str] = {}
+    if payment_sig:
+        req_headers["PAYMENT-SIGNATURE"] = payment_sig
+
+    status, resp_headers, text = http_request("GET", url, headers=req_headers or None)
+
+    if status == 401:
+        body = json.loads(text)
+        challenge = body.get("siwx")
+        if not challenge:
+            raise RuntimeError(f"Got 401 but no SIWX challenge in response: {text[:500]}")
+        siwx_header = sign_siwx_challenge(challenge)
+        req_headers["X-SIWX"] = siwx_header
+        status, resp_headers, text = http_request("GET", url, headers=req_headers)
+
+    if status in (200, 402):
+        return status, json.loads(text)
+    raise RuntimeError(f"Unexpected poll status {status}: {text[:1000]}")
 
 
 def poll_until_done(conversation_id: str, interval: int, timeout_s: int) -> dict:
-started = time.time()
-while time.time() - started < timeout_s:
-status, data = fetch_status(conversation_id)
-state = data.get("status")
-if status == 200 and state == "completed":
-return data
-if status == 200 and state in {"queued", "processing", "running", "pending"}:
-elapsed = int(time.time() - started)
-print(f"[{elapsed}s] status={state}", file=sys.stderr)
-time.sleep(interval)
-continue
-if status == 402:
-payment_sig = create_payment_signature(data)
-status2, data2 = fetch_status(conversation_id, payment_sig)
-if status2 == 200:
-return data2
-raise RuntimeError(f"Re-authorized poll failed: {status2}: {json.dumps(data2)[:1000]}")
-raise RuntimeError(f"Unexpected poll response: status={status}, body={json.dumps(data)[:1000]}")
-raise RuntimeError("Polling timeout exceeded")
+    started = time.time()
+    while time.time() - started < timeout_s:
+        status, data = fetch_status(conversation_id)
+        state = data.get("status")
+        if status == 200 and state == "completed":
+            return data
+        if status == 200 and state in {"queued", "processing", "running", "pending"}:
+            elapsed = int(time.time() - started)
+            print(f"[{elapsed}s] status={state}", file=sys.stderr)
+            time.sleep(interval)
+            continue
+        if status == 402:
+            payment_sig = create_payment_signature(data)
+            status2, data2 = fetch_status(conversation_id, payment_sig)
+            if status2 == 200:
+                return data2
+            raise RuntimeError(f"Re-authorized poll failed: {status2}: {json.dumps(data2)[:1000]}")
+        raise RuntimeError(f"Unexpected poll response: status={status}, body={json.dumps(data)[:1000]}")
+    raise RuntimeError("Polling timeout exceeded")
 
 
 def dry_run(query: str, mode: str) -> None:
