@@ -251,7 +251,7 @@ Challenges are single-use (fresh nonce each time), so every poll iteration start
 
 For the full SIWX protocol details (message format, signing examples in TypeScript and Python), see `{baseDir}/references/siwx-protocol.md`.
 
-**Poll every 60 seconds.** The upstream analysis service rate-limits frequent polling requests. Status values after successful SIWX auth:
+**Poll about once every 3 minutes (~180 seconds).** Do not poll every second or in a tight loop — the upstream analysis service rate-limits frequent polling requests. Status values after successful SIWX auth:
 
 - `queued` — analysis still running, keep polling
 - `completed` — results are in the response body (USDC was already settled server-side)
@@ -379,7 +379,7 @@ For the full ABI, parameter table, and Python/TypeScript examples, see `{baseDir
 - `401` on poll/artifacts — SIWX challenge required. The response body contains an `siwx` object. Sign the challenge with the paying wallet and retry with `X-SIWX` header (see Step 4).
 - `400` — Invalid or malformed payment signature or SIWX header. Re-sign and retry.
 - `402` on poll — Authorization expired before settlement. Sign a fresh authorization **and** a fresh SIWX challenge, then retry with both headers (see Step 4a). No funds were lost.
-- `429` — Rate limited. The upstream service has a rate limit on auth reads. Back off and retry. Use 60-second poll intervals to avoid this.
+- `429` — Rate limited. The upstream service has a rate limit on auth reads. Back off and retry. Use ~3-minute poll intervals to avoid this.
 - Insufficient USDC balance — Cannot sign a valid authorization. Report to operator, suggest topping up the wallet.
 - `5xx` — Server error. Retry later.
 
