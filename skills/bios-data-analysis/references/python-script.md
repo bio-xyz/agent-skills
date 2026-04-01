@@ -254,7 +254,7 @@ def start_analysis(task_description: str, file_ids: list[str] | None = None) -> 
     if file_ids:
         body["fileIds"] = file_ids
 
-    status, headers, text = http_request("POST", f"{BASE_URL}/api/data-analysis/start", body=body)
+    status, headers, text = http_request("POST", f"{BASE_URL}/api/agents/analysis/run", body=body)
     if status == 200:
         return json.loads(text)
 
@@ -263,7 +263,7 @@ def start_analysis(task_description: str, file_ids: list[str] | None = None) -> 
 
     status2, headers2, text2 = http_request(
         "POST",
-        f"{BASE_URL}/api/data-analysis/start",
+        f"{BASE_URL}/api/agents/analysis/run",
         body=body,
         headers={"PAYMENT-SIGNATURE": payment_sig},
     )
@@ -276,7 +276,7 @@ def start_analysis(task_description: str, file_ids: list[str] | None = None) -> 
 
 
 def fetch_status(task_id: str, payment_sig: str | None = None) -> tuple[int, dict]:
-    url = f"{BASE_URL}/api/data-analysis/{task_id}"
+    url = f"{BASE_URL}/api/agents/analysis/tasks/{task_id}"
     req_headers: dict[str, str] = {}
     if payment_sig:
         req_headers["PAYMENT-SIGNATURE"] = payment_sig
@@ -301,7 +301,7 @@ def fetch_status(task_id: str, payment_sig: str | None = None) -> tuple[int, dic
 
 def download_artifact(task_id: str, artifact_id: str) -> dict:
     """Download an artifact and return { url, expiresIn }."""
-    url = f"{BASE_URL}/api/data-analysis/{task_id}/artifacts/{artifact_id}"
+    url = f"{BASE_URL}/api/agents/analysis/tasks/{task_id}/artifacts/{artifact_id}/download"
 
     status, _headers, text = http_request("GET", url)
     if status == 401:
@@ -351,7 +351,7 @@ def poll_until_done(task_id: str, interval: int, timeout_s: int) -> dict:
 
 def dry_run(task_description: str) -> None:
     body: dict = {"taskDescription": task_description}
-    status, headers, text = http_request("POST", f"{BASE_URL}/api/data-analysis/start", body=body)
+    status, headers, text = http_request("POST", f"{BASE_URL}/api/agents/analysis/run", body=body)
     print(f"Status: {status}")
     try:
         parsed = parse_payment_required(status, headers, text)

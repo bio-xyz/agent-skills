@@ -13,7 +13,7 @@ curl -sS -X POST https://x402.ai.bio.xyz/api/files/upload \
 ### Step 2: Start analysis (get 402)
 
 ```bash
-curl -s -X POST https://x402.ai.bio.xyz/api/data-analysis/start \
+curl -s -X POST https://x402.ai.bio.xyz/api/agents/analysis/run \
   -H "Content-Type: application/json" \
   -d '{"taskDescription":"Analyze gene expression patterns","fileIds":["FILE_ID_HERE"]}'
 # → 402 with x402Version:2 payment requirements in JSON body
@@ -22,7 +22,7 @@ curl -s -X POST https://x402.ai.bio.xyz/api/data-analysis/start \
 ### Step 3: Sign and resubmit (language-specific signing, see SKILL.md Step 3)
 
 ```bash
-curl -s -X POST https://x402.ai.bio.xyz/api/data-analysis/start \
+curl -s -X POST https://x402.ai.bio.xyz/api/agents/analysis/run \
   -H "Content-Type: application/json" \
   -H "PAYMENT-SIGNATURE: <base64-encoded x402 v2 payment payload>" \
   -d '{"taskDescription":"Analyze gene expression patterns","fileIds":["FILE_ID_HERE"]}'
@@ -126,7 +126,7 @@ async function startAnalysis(
   const body = { taskDescription, fileIds: fileIds.length ? fileIds : undefined };
 
   // Step 2: Get 402
-  const res402 = await fetch(`${BASE}/api/data-analysis/start`, {
+  const res402 = await fetch(`${BASE}/api/agents/analysis/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -142,7 +142,7 @@ async function startAnalysis(
   const paymentPayload = await client.createPaymentPayload(paymentRequired);
   const paymentSig = encodePaymentSignatureHeader(paymentPayload);
 
-  const res200 = await fetch(`${BASE}/api/data-analysis/start`, {
+  const res200 = await fetch(`${BASE}/api/agents/analysis/run`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -158,7 +158,7 @@ async function startAnalysis(
 // --- Step 4: Poll with SIWX ---
 
 async function pollForResults(taskId: string, account: LocalAccount): Promise<any> {
-  const url = `${BASE}/api/data-analysis/${taskId}`;
+  const url = `${BASE}/api/agents/analysis/tasks/${taskId}`;
 
   while (true) {
     // Get SIWX challenge
@@ -212,7 +212,7 @@ async function downloadArtifact(
   artifactId: string,
   account: LocalAccount,
 ): Promise<{ url: string; expiresIn: number }> {
-  const url = `${BASE}/api/data-analysis/${taskId}/artifacts/${artifactId}`;
+  const url = `${BASE}/api/agents/analysis/tasks/${taskId}/artifacts/${artifactId}/download`;
 
   // Get SIWX challenge
   let res = await fetch(url);

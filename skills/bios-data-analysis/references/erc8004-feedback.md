@@ -42,7 +42,7 @@ Referenced from Step 6 of the main skill. Use after receiving a `completed` anal
 | `valueDecimals` | `0` |
 | `tag1` | `"x402"` |
 | `tag2` | `"analysis"` |
-| `endpoint` | `"https://x402.ai.bio.xyz/api/data-analysis/start"` |
+| `endpoint` | `"https://x402.ai.bio.xyz/api/agents/analysis/run"` |
 | `feedbackURI` | `"{baseDir}/api/feedback/{taskId}"` |
 | `feedbackHash` | The `feedbackHash` from step 6a |
 
@@ -64,7 +64,7 @@ tx = contract.functions.giveFeedback(
     0,                              # valueDecimals
     "x402",                         # tag1
     "analysis",                     # tag2
-    "https://x402.ai.bio.xyz/api/data-analysis/start",
+    "https://x402.ai.bio.xyz/api/agents/analysis/run",
     f"{api_base}/api/feedback/{task_id}",
     bytes.fromhex(feedback_hash[2:]),  # feedbackHash from step 6a (strip 0x prefix)
 ).build_transaction({
@@ -102,7 +102,7 @@ const txHash = await walletClient.writeContract({
     0,                              // valueDecimals
     "x402",                         // tag1
     "analysis",                     // tag2
-    "https://x402.ai.bio.xyz/api/data-analysis/start",
+    "https://x402.ai.bio.xyz/api/agents/analysis/run",
     `${apiBase}/api/feedback/${taskId}`,
     feedbackHash as `0x${string}`,  // feedbackHash from step 6a
   ],

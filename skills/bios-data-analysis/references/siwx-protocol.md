@@ -1,8 +1,8 @@
 # SIWX Protocol — Poll & Artifact Endpoint Authentication
 
 The GET endpoints for data analysis require **SIWX (Sign-In With X)** authentication:
-- `GET /api/data-analysis/{taskId}` — poll status / retrieve results
-- `GET /api/data-analysis/{taskId}/artifacts/{artifactId}` — download artifacts
+- `GET /api/agents/analysis/tasks/{taskId}` — poll status / retrieve results
+- `GET /api/agents/analysis/tasks/{taskId}/artifacts/{artifactId}/download` — download artifacts
 
 Only the wallet that paid for the analysis can access these endpoints. This uses [SIWE (EIP-4361)](https://eips.ethereum.org/EIPS/eip-4361) messages signed with `personal_sign` (EIP-191).
 
@@ -11,7 +11,7 @@ Only the wallet that paid for the analysis can access these endpoints. This uses
 ```
 Client                                    Server
   │                                         │
-  │  GET /api/data-analysis/{taskId}        │
+  │  GET /api/agents/analysis/tasks/{taskId} │
   │ ──────────────────────────────────────► │
   │                                         │
   │  401 { error, siwx: SiwxChallenge }     │
@@ -21,7 +21,7 @@ Client                                    Server
   │  Sign with personal_sign (EIP-191)      │
   │  Base64-encode { message, signature }   │
   │                                         │
-  │  GET /api/data-analysis/{taskId}        │
+  │  GET /api/agents/analysis/tasks/{taskId} │
   │  X-SIWX: <base64>                      │
   │ ──────────────────────────────────────► │
   │                                         │
@@ -40,7 +40,7 @@ The 401 response body contains an `siwx` object:
   "error": "Authentication required",
   "siwx": {
     "domain": "x402.ai.bio.xyz",
-    "uri": "https://x402.ai.bio.xyz/api/data-analysis/1e4a1c29-e4d7-4fa7-8c90-ae8f21f27c82",
+    "uri": "https://x402.ai.bio.xyz/api/agents/analysis/tasks/1e4a1c29-e4d7-4fa7-8c90-ae8f21f27c82",
     "nonce": "random-nonce-string",
     "chainId": 8453,
     "statement": "Sign in to access your BioAgent research results",
@@ -63,7 +63,7 @@ x402.ai.bio.xyz wants you to sign in with your Ethereum account:
 
 Sign in to access your BioAgent research results
 
-URI: https://x402.ai.bio.xyz/api/data-analysis/1e4a1c29-e4d7-4fa7-8c90-ae8f21f27c82
+URI: https://x402.ai.bio.xyz/api/agents/analysis/tasks/1e4a1c29-e4d7-4fa7-8c90-ae8f21f27c82
 Version: 1
 Chain ID: 8453
 Nonce: random-nonce-string

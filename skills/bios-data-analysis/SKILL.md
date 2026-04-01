@@ -25,9 +25,9 @@ Three auth layers are used across different endpoints:
 | Endpoint                                                 | Auth                              |
 | -------------------------------------------------------- | --------------------------------- |
 | `POST /api/files/upload`                                 | None                              |
-| `POST /api/data-analysis/start`                          | x402 (`PAYMENT-SIGNATURE` header) |
-| `GET /api/data-analysis/{taskId}`                        | SIWX (`X-SIWX` header)            |
-| `GET /api/data-analysis/{taskId}/artifacts/{artifactId}` | SIWX (`X-SIWX` header)            |
+| `POST /api/agents/analysis/run`                                              | x402 (`PAYMENT-SIGNATURE` header) |
+| `GET /api/agents/analysis/tasks/{taskId}`                                    | SIWX (`X-SIWX` header)            |
+| `GET /api/agents/analysis/tasks/{taskId}/artifacts/{artifactId}/download`    | SIWX (`X-SIWX` header)            |
 
 ### x402 — Start endpoint
 
@@ -51,7 +51,7 @@ Important:
 - Use the paid retry header `PAYMENT-SIGNATURE`
 - Do **not** default to v1-style `X-PAYMENT`
 - Do **not** trust `extensions.bazaar.info.input.body` as the canonical user input. It may contain example metadata rather than the actual submitted request body
-- **Polling and artifact downloads require SIWX auth.** Every GET to `/api/data-analysis/{taskId}` or `.../artifacts/{artifactId}` returns 401 unless an `X-SIWX` header is present with a valid signed SIWE message from the paying wallet. See `{baseDir}/references/siwx-protocol.md`
+- **Polling and artifact downloads require SIWX auth.** Every GET to `/api/agents/analysis/tasks/{taskId}` or `.../artifacts/{artifactId}/download` returns 401 unless an `X-SIWX` header is present with a valid signed SIWE message from the paying wallet. See `{baseDir}/references/siwx-protocol.md`
 
 ## Pricing
 
@@ -114,7 +114,7 @@ Save the `fileId` — pass it in Step 2 to attach the file to the analysis task.
 ### Step 2: Send analysis request → get 402
 
 ```
-POST /api/data-analysis/start
+POST /api/agents/analysis/run
 Content-Type: application/json
 
 {
@@ -134,7 +134,7 @@ The payment requirements are returned in both the **JSON response body** and the
 {
   "x402Version": 2,
   "resource": {
-    "url": "https://x402.ai.bio.xyz/api/data-analysis/start",
+    "url": "https://x402.ai.bio.xyz/api/agents/analysis/run",
     "description": "BIOS data analysis task",
     "mimeType": "application/json"
   },
@@ -207,7 +207,7 @@ Your signer just needs to implement: `sign_typed_data(domain, types, primary_typ
 Resubmit the same request with the payment header:
 
 ```
-POST /api/data-analysis/start
+POST /api/agents/analysis/run
 Content-Type: application/json
 PAYMENT-SIGNATURE: <base64-encoded x402 v2 payment payload>
 
@@ -231,7 +231,7 @@ Do **not** replace your request body with any example body found in `extensions.
 ### Step 4: Poll for results (SIWX auth required)
 
 ```
-GET /api/data-analysis/{taskId}
+GET /api/agents/analysis/tasks/{taskId}
 ```
 
 The poll endpoint requires **SIWX authentication** — only the wallet that paid can read results. Every poll request goes through a challenge-response flow:
@@ -243,7 +243,7 @@ The poll endpoint requires **SIWX authentication** — only the wallet that paid
 5. Retry the GET with the `X-SIWX` header:
 
 ```
-GET /api/data-analysis/{taskId}
+GET /api/agents/analysis/tasks/{taskId}
 X-SIWX: <base64-encoded JSON { message, signature }>
 ```
 
@@ -308,7 +308,7 @@ When a poll returns `402`, the analysis is already **complete** on the server. Y
 5. GET the same URL with **both** headers:
 
 ```
-GET /api/data-analysis/{taskId}
+GET /api/agents/analysis/tasks/{taskId}
 X-SIWX: <base64-encoded SIWX payload>
 PAYMENT-SIGNATURE: <base64-encoded new x402 v2 payment payload>
 ```
@@ -320,7 +320,7 @@ The server settles this new authorization immediately and returns the completed 
 For each artifact in the completed response, download it via:
 
 ```
-GET /api/data-analysis/{taskId}/artifacts/{artifactId}
+GET /api/agents/analysis/tasks/{taskId}/artifacts/{artifactId}/download
 ```
 
 This endpoint also requires SIWX authentication (same challenge-response as Step 4). The task must be `completed`.
