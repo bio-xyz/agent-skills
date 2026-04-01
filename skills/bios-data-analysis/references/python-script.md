@@ -319,6 +319,8 @@ def download_artifact(task_id: str, artifact_id: str) -> dict:
 
 def poll_until_done(task_id: str, interval: int, timeout_s: int) -> dict:
     started = time.time()
+    print("Waiting 30s before first poll ...", file=sys.stderr)
+    time.sleep(30)
     while time.time() - started < timeout_s:
         status, data = fetch_status(task_id)
 
@@ -366,7 +368,7 @@ def main() -> int:
     parser.add_argument("--file", action="append", dest="files", help="Local file to upload (can be repeated)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-poll", action="store_true", help="Submit the paid request and stop after receiving taskId")
-    parser.add_argument("--poll-interval", type=int, default=60)
+    parser.add_argument("--poll-interval", type=int, default=180)
     parser.add_argument("--timeout", type=int, default=9000)
     parser.add_argument("--download-artifacts", action="store_true", help="Download artifact URLs after completion")
     args = parser.parse_args()

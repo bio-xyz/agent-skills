@@ -245,7 +245,7 @@ Challenges are single-use (fresh nonce each time), so every poll iteration start
 
 For the full SIWX protocol details (message format, signing examples in TypeScript and Python), see `{baseDir}/references/siwx-protocol.md`.
 
-Poll about once every 3 minutes (~180 seconds). Do not poll every second or in a tight loop. Status values after successful SIWX auth:
+**Wait ~30 seconds before the first poll** (to avoid rate limit; the first request will be the SIWX handshake + status check). **After that, poll once every 3 minutes (~180 seconds).** Do not poll in a tight loop. Status values after successful SIWX auth:
 - `queued` → research still running, keep polling
 - `completed` → results are in the response body (USDC was already settled server-side)
 - `402 Payment Required` → the original authorization expired before settlement; see **Step 4a** below

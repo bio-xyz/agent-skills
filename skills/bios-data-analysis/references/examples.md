@@ -160,6 +160,9 @@ async function startAnalysis(
 async function pollForResults(taskId: string, account: LocalAccount): Promise<any> {
   const url = `${BASE}/api/agents/analysis/tasks/${taskId}`;
 
+  // Wait 30s before the first poll
+  await new Promise((r) => setTimeout(r, 30_000));
+
   while (true) {
     // Get SIWX challenge
     let res = await fetch(url);
@@ -197,7 +200,7 @@ async function pollForResults(taskId: string, account: LocalAccount): Promise<an
     if (data.status === "completed") return data;
     if (data.status === "failed") throw new Error(`Analysis failed: ${JSON.stringify(data.data)}`);
     if (data.status === "queued") {
-      await new Promise((r) => setTimeout(r, 60_000)); // poll every 60s
+      await new Promise((r) => setTimeout(r, 180_000)); // poll every 3 min
       continue;
     }
 

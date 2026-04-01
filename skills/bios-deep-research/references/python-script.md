@@ -261,6 +261,8 @@ def fetch_status(conversation_id: str, payment_sig: str | None = None) -> tuple[
 
 def poll_until_done(conversation_id: str, interval: int, timeout_s: int) -> dict:
     started = time.time()
+    print("Waiting 30s before first poll ...", file=sys.stderr)
+    time.sleep(30)
     while time.time() - started < timeout_s:
         status, data = fetch_status(conversation_id)
         state = data.get("status")
@@ -297,7 +299,7 @@ parser.add_argument("query", help="Research query")
 parser.add_argument("--mode", choices=["steering", "smart", "fully-autonomous"], default="steering")
 parser.add_argument("--conversation-id")
 parser.add_argument("--dry-run", action="store_true")[11:41 AM]parser.add_argument("--no-poll", action="store_true", help="Submit the paid request and stop after receiving conversationId")
-parser.add_argument("--poll-interval", type=int, default=10)
+parser.add_argument("--poll-interval", type=int, default=180)
 parser.add_argument("--timeout", type=int, default=1800)
 args = parser.parse_args()
 
