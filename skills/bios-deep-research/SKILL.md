@@ -52,6 +52,7 @@ The signing wallet must be the **same wallet** that paid in Step 3. See Step 4 a
 This skill uses **x402 v2**, not x402 v1. Polling uses **SIWX** (SIWE-based wallet auth).
 
 Important:
+
 - The 402 response includes payment requirements in **both** the JSON response body and the `PAYMENT-REQUIRED` header (base64-encoded). Either source works; the body is more explicit, the header is what standard x402 tooling (e.g. `@x402/fetch`) expects
 - Use the paid retry header `PAYMENT-SIGNATURE`
 - Do **not** default to v1-style `X-PAYMENT`
@@ -60,11 +61,11 @@ Important:
 
 ## Pricing
 
-| Mode | API Key | x402 (USDC) | Auth window | Typical wait | Use case |
-|------|---------|-------------|-------------|--------------|----------|
-| `steering` | 1 credit/iteration | $0.20 | 1 800 s (30 min) | ~5 min | Interactive guidance, test hypotheses |
-| `smart` | up to 5 credits | $1.00 | 4 200 s (70 min) | ~15 min | Balanced depth with checkpoints |
-| `fully-autonomous` | up to 20 credits | $8.00 | 29 400 s (~8 hr) | ~60+ min | Deep unattended research |
+| Mode               | API Key            | x402 (USDC) | Auth window      | Typical wait | Use case                              |
+| ------------------ | ------------------ | ----------- | ---------------- | ------------ | ------------------------------------- |
+| `steering`         | 1 credit/iteration | $0.20       | 1 800 s (30 min) | ~5 min       | Interactive guidance, test hypotheses |
+| `semi-autonomous`  | up to 5 credits    | $1.00       | 4 200 s (70 min) | ~15 min      | Balanced depth with checkpoints       |
+| `fully-autonomous` | up to 20 credits   | $8.00       | 29 400 s (~8 hr) | ~60+ min     | Deep unattended research              |
 
 The **auth window** (`maxTimeoutSeconds`, x402 only) is how long your signed authorization stays valid. If the server hasn't settled before this window closes, the authorization expires harmlessly (no USDC moves) and the conversation enters `timeout` status. See Step 4 for the retry flow.
 
@@ -79,12 +80,12 @@ The **auth window** (`maxTimeoutSeconds`, x402 only) is how long your signed aut
 
 Any wallet that can produce EIP-712 signatures works. Common setups:
 
-| Method | How | Best for |
-|--------|-----|----------|
-| **Private key** | Sign locally with ethers.js, web3.py, eth_account, viem, etc. | Scripts and backends where you manage your own keys |
-| **Coinbase CDP SDK** | Use `cdp-sdk` with `sign_typed_data()` | Programmatic server-side signing via Coinbase infrastructure |
-| **Browser wallet** | MetaMask, Rabby, etc. via `eth_signTypedData_v4` | Interactive/manual use |
-| **MPC / multisig** | Any signer that produces a valid EIP-712 signature | Custom custody setups |
+| Method               | How                                                           | Best for                                                     |
+| -------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ |
+| **Private key**      | Sign locally with ethers.js, web3.py, eth_account, viem, etc. | Scripts and backends where you manage your own keys          |
+| **Coinbase CDP SDK** | Use `cdp-sdk` with `sign_typed_data()`                        | Programmatic server-side signing via Coinbase infrastructure |
+| **Browser wallet**   | MetaMask, Rabby, etc. via `eth_signTypedData_v4`              | Interactive/manual use                                       |
+| **MPC / multisig**   | Any signer that produces a valid EIP-712 signature            | Custom custody setups                                        |
 
 ## API Protocol
 
@@ -102,11 +103,12 @@ Content-Type: application/json
 
 {
   "message": "Your research query here",
-  "researchMode": "steering"           // or "smart" or "fully-autonomous"
+  "researchMode": "steering"           // or "semi-autonomous" or "fully-autonomous"
 }
 ```
 
 Optional fields:
+
 - `"conversationId": "..."` to continue a previous conversation
 - `"clarificationSessionId": "..."` to attach a clarification session
 
@@ -155,7 +157,10 @@ Using the data from step 1, create an x402 v2 payment payload. Use an x402 v2 EV
 import { x402Client } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
-import { encodePaymentSignatureHeader, decodePaymentRequiredHeader } from "@x402/core/http";
+import {
+  encodePaymentSignatureHeader,
+  decodePaymentRequiredHeader,
+} from "@x402/core/http";
 
 const client = new x402Client();
 const signer = toClientEvmSigner(account, publicClient);
@@ -246,6 +251,7 @@ Challenges are single-use (fresh nonce each time), so every poll iteration start
 For the full SIWX protocol details (message format, signing examples in TypeScript and Python), see `{baseDir}/references/siwx-protocol.md`.
 
 **Wait ~30 seconds before the first poll** (to avoid rate limit; the first request will be the SIWX handshake + status check). **After that, poll once every 3 minutes (~180 seconds).** Do not poll in a tight loop. Status values after successful SIWX auth:
+
 - `queued` → research still running, keep polling
 - `completed` → results are in the response body (USDC was already settled server-side)
 - `402 Payment Required` → the original authorization expired before settlement; see **Step 4a** below
@@ -333,11 +339,13 @@ Paginate with the `cursor` query parameter. Response contains `data`, `nextCurso
 ## Error handling
 
 **API key path:**
+
 - `401` — API key invalid or missing. Check `BIOS_API_KEY` env var.
 - `429` — Rate limited. Back off and retry.
 - `5xx` — Server error. Retry later.
 
 **x402 path:**
+
 - `402` — Expected on the first request. This is the start of the payment flow (see Step 1).
 - `401` on poll — SIWX challenge required. The response body contains an `siwx` object. Sign the challenge with the paying wallet and retry with `X-SIWX` header (see Step 4).
 - `400` — Invalid or malformed payment signature or SIWX header. Re-sign and retry.

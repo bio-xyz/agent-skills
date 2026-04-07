@@ -4,8 +4,8 @@ Referenced from Step 5 of the main skill. Use after receiving a `completed` rese
 
 ## Contract addresses
 
-| Network | ReputationRegistry |
-|---------|--------------------|
+| Network     | ReputationRegistry                           |
+| ----------- | -------------------------------------------- |
 | Base (8453) | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
 
 **BIOS agentId:** `19177`
@@ -35,16 +35,16 @@ Referenced from Step 5 of the main skill. Use after receiving a `completed` rese
 
 ## Parameters
 
-| Parameter | Value |
-|-----------|-------|
-| `agentId` | `19177` |
-| `value` | `1` (success) |
-| `valueDecimals` | `0` |
-| `tag1` | `"x402"` |
-| `tag2` | The research mode used (e.g. `"steering"`) |
-| `endpoint` | `"https://x402.ai.bio.xyz/api/deep-research/start"` |
-| `feedbackURI` | `"{baseDir}/api/feedback/{conversationId}"` |
-| `feedbackHash` | The `feedbackHash` from step 5a |
+| Parameter       | Value                                               |
+| --------------- | --------------------------------------------------- |
+| `agentId`       | `19177`                                             |
+| `value`         | `1` (success)                                       |
+| `valueDecimals` | `0`                                                 |
+| `tag1`          | `"x402"`                                            |
+| `tag2`          | The research mode used (e.g. `"steering"`)          |
+| `endpoint`      | `"https://x402.ai.bio.xyz/api/deep-research/start"` |
+| `feedbackURI`   | `"{baseDir}/api/feedback/{conversationId}"`         |
+| `feedbackHash`  | The `feedbackHash` from step 5a                     |
 
 ## Python example (web3.py)
 
@@ -63,7 +63,7 @@ tx = contract.functions.giveFeedback(
     1,                              # value: success
     0,                              # valueDecimals
     "x402",                         # tag1
-    research_mode,                  # tag2: "steering", "smart", etc.
+    research_mode,                  # tag2: "steering", "semi-autonomous", etc.
     "https://x402.ai.bio.xyz/api/deep-research/start",
     f"{api_base}/api/feedback/{conversation_id}",
     bytes.fromhex(feedback_hash[2:]),  # feedbackHash from step 5a (strip 0x prefix)
@@ -88,7 +88,11 @@ const REPUTATION_REGISTRY = "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63";
 const BIOS_AGENT_ID = 19177n;
 
 const account = privateKeyToAccount(privateKey);
-const walletClient = createWalletClient({ account, chain: base, transport: http() });
+const walletClient = createWalletClient({
+  account,
+  chain: base,
+  transport: http(),
+});
 
 const txHash = await walletClient.writeContract({
   address: REPUTATION_REGISTRY,
@@ -98,13 +102,13 @@ const txHash = await walletClient.writeContract({
   functionName: "giveFeedback",
   args: [
     BIOS_AGENT_ID,
-    1n,                             // value: success
-    0,                              // valueDecimals
-    "x402",                         // tag1
-    researchMode,                   // tag2
+    1n, // value: success
+    0, // valueDecimals
+    "x402", // tag1
+    researchMode, // tag2
     "https://x402.ai.bio.xyz/api/deep-research/start",
     `${apiBase}/api/feedback/${conversationId}`,
-    feedbackHash as `0x${string}`,  // feedbackHash from step 5a
+    feedbackHash as `0x${string}`, // feedbackHash from step 5a
   ],
 });
 

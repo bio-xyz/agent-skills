@@ -3,10 +3,12 @@
 BIOS Deep Research client.
 
 Supports two wallet backends with auto-detection:
+
 1. WALLET_PRIVATE_KEY
 2. CDP_API_KEY_ID + CDP_API_KEY_SECRET + CDP_WALLET_ADDRESS
 
 This script uses the currently working x402 v2 flow for BIOS:
+
 - request research job
 - parse payment requirements from JSON body or PAYMENT-REQUIRED header
 - create PAYMENT-SIGNATURE via a small Node helper using @x402/core/@x402/evm
@@ -15,6 +17,7 @@ This script uses the currently working x402 v2 flow for BIOS:
 - optionally poll until completion
 
 Requirements in this environment:
+
 - python3
 - node + npm
 - eth_account (pip install eth-account)
@@ -24,7 +27,7 @@ python3 research.py --dry-run "What is NAD+?"
 python3 research.py --mode steering --no-poll "What are the most common causes of freshwater fish die-offs in lakes and rivers?"
 """
 
-from __future__ import annotations
+from **future** import annotations
 
 import argparse
 import base64
@@ -43,46 +46,42 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 BASE_URL = os.environ.get("BIOS_X402_BASE_URL", "https://x402.ai.bio.xyz")
-SCRIPT_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(**file**).resolve().parent
 NODE_DEPS_DIR = SCRIPT_DIR / ".node-deps"
 SIGNER_JS = SCRIPT_DIR / "research_signer.mjs"
 PAYMENT_REQUIRED_HEADERS = ["PAYMENT-REQUIRED", "payment-required"]
 
+def \_get_wallet_account() -> Account:
+pk = os.environ.get("WALLET_PRIVATE_KEY")
+if pk:
+return Account.from_key(pk)
+raise RuntimeError(
+"SIWX signing requires WALLET_PRIVATE_KEY. "
+"CDP wallet SIWX signing is not yet supported in this script."
+)
 
-def _get_wallet_account() -> Account:
-    pk = os.environ.get("WALLET_PRIVATE_KEY")
-    if pk:
-        return Account.from_key(pk)
-    raise RuntimeError(
-        "SIWX signing requires WALLET_PRIVATE_KEY. "
-        "CDP wallet SIWX signing is not yet supported in this script."
-    )
-
-
-def _build_siwe_message(challenge: dict, wallet_address: str) -> str:
-    return (
-        f"{challenge['domain']} wants you to sign in with your Ethereum account:\n"
-        f"{wallet_address}\n"
-        f"\n"
-        f"{challenge['statement']}\n"
-        f"\n"
-        f"URI: {challenge['uri']}\n"
-        f"Version: {challenge['version']}\n"
-        f"Chain ID: {challenge['chainId']}\n"
-        f"Nonce: {challenge['nonce']}\n"
-        f"Issued At: {challenge['issuedAt']}\n"
-        f"Expiration Time: {challenge['expirationTime']}"
-    )
-
+def \_build_siwe_message(challenge: dict, wallet_address: str) -> str:
+return (
+f"{challenge['domain']} wants you to sign in with your Ethereum account:\n"
+f"{wallet_address}\n"
+f"\n"
+f"{challenge['statement']}\n"
+f"\n"
+f"URI: {challenge['uri']}\n"
+f"Version: {challenge['version']}\n"
+f"Chain ID: {challenge['chainId']}\n"
+f"Nonce: {challenge['nonce']}\n"
+f"Issued At: {challenge['issuedAt']}\n"
+f"Expiration Time: {challenge['expirationTime']}"
+)
 
 def sign_siwx_challenge(challenge: dict) -> str:
-    """Sign an SIWX challenge and return the base64-encoded X-SIWX header value."""
-    account = _get_wallet_account()
-    message = _build_siwe_message(challenge, account.address)
-    signed = account.sign_message(encode_defunct(text=message))
-    payload = json.dumps({"message": message, "signature": "0x" + signed.signature.hex()})
-    return base64.b64encode(payload.encode()).decode()
-
+"""Sign an SIWX challenge and return the base64-encoded X-SIWX header value."""
+account = \_get_wallet_account()
+message = \_build_siwe_message(challenge, account.address)
+signed = account.sign_message(encode_defunct(text=message))
+payload = json.dumps({"message": message, "signature": "0x" + signed.signature.hex()})
+return base64.b64encode(payload.encode()).decode()
 
 def load_cdp_creds_from_defaults() -> None:
 """Populate env vars from known credential files if they aren't already set."""
@@ -114,7 +113,6 @@ if data.get("address"):
 os.environ.setdefault("CDP_WALLET_ADDRESS", data["address"])
 break
 
-
 def ensure_node_deps() -> None:
 if shutil.which("node") is None or shutil.which("npm") is None:
 raise RuntimeError("node and npm are required")
@@ -141,7 +139,6 @@ scripts_node_modules.symlink_to(modules, target_is_directory=True)
 except FileExistsError:
 pass
 
-
 def check_wallet_env() -> str:
 load_cdp_creds_from_defaults()
 if os.environ.get("WALLET_PRIVATE_KEY"):
@@ -151,7 +148,6 @@ return "cdp"
 raise RuntimeError(
 "No wallet configured. Set WALLET_PRIVATE_KEY or CDP_API_KEY_ID/CDP_API_KEY_SECRET/CDP_WALLET_ADDRESS."
 )
-
 
 def http_request(method: str, url: str, body: dict | None = None, headers: dict | None = None) -> tuple[int, dict, str]:
 data = None
@@ -166,7 +162,6 @@ try:
 with urllib.request.urlopen(req, timeout=60) as resp:[11:41 AM]return resp.getcode(), dict(resp.info()), resp.read().decode()
 except urllib.error.HTTPError as e:
 return e.code, dict(e.headers), e.read().decode()
-
 
 def parse_payment_required(status: int, headers: dict, body_text: str) -> dict:
 if status != 402:
@@ -183,7 +178,6 @@ try:
 return json.loads(body_text)
 except Exception as e:
 raise RuntimeError(f"Could not parse payment requirements: {e}; body={body_text[:500]}")
-
 
 def create_payment_signature(payment_required: dict) -> str:
 ensure_node_deps()
@@ -208,7 +202,6 @@ try:
 os.unlink(tmp_path)
 except OSError:
 pass
-
 
 def start_research(query: str, mode: str, conversation_id: str | None = None) -> dict:
 wallet_type = check_wallet_env()
@@ -236,12 +229,11 @@ result = json.loads(text2)
 result["_wallet_backend"] = wallet_type
 return result
 
-
 def fetch_status(conversation_id: str, payment_sig: str | None = None) -> tuple[int, dict]:
-    url = f"{BASE_URL}/api/deep-research/{conversation_id}"
-    req_headers: dict[str, str] = {}
-    if payment_sig:
-        req_headers["PAYMENT-SIGNATURE"] = payment_sig
+url = f"{BASE_URL}/api/deep-research/{conversation_id}"
+req_headers: dict[str, str] = {}
+if payment_sig:
+req_headers["PAYMENT-SIGNATURE"] = payment_sig
 
     status, resp_headers, text = http_request("GET", url, headers=req_headers or None)
 
@@ -258,30 +250,28 @@ def fetch_status(conversation_id: str, payment_sig: str | None = None) -> tuple[
         return status, json.loads(text)
     raise RuntimeError(f"Unexpected poll status {status}: {text[:1000]}")
 
-
 def poll_until_done(conversation_id: str, interval: int, timeout_s: int) -> dict:
-    started = time.time()
-    print("Waiting 30s before first poll ...", file=sys.stderr)
-    time.sleep(30)
-    while time.time() - started < timeout_s:
-        status, data = fetch_status(conversation_id)
-        state = data.get("status")
-        if status == 200 and state == "completed":
-            return data
-        if status == 200 and state in {"queued", "processing", "running", "pending"}:
-            elapsed = int(time.time() - started)
-            print(f"[{elapsed}s] status={state}", file=sys.stderr)
-            time.sleep(interval)
-            continue
-        if status == 402:
-            payment_sig = create_payment_signature(data)
-            status2, data2 = fetch_status(conversation_id, payment_sig)
-            if status2 == 200:
-                return data2
-            raise RuntimeError(f"Re-authorized poll failed: {status2}: {json.dumps(data2)[:1000]}")
-        raise RuntimeError(f"Unexpected poll response: status={status}, body={json.dumps(data)[:1000]}")
-    raise RuntimeError("Polling timeout exceeded")
-
+started = time.time()
+print("Waiting 30s before first poll ...", file=sys.stderr)
+time.sleep(30)
+while time.time() - started < timeout_s:
+status, data = fetch_status(conversation_id)
+state = data.get("status")
+if status == 200 and state == "completed":
+return data
+if status == 200 and state in {"queued", "processing", "running", "pending"}:
+elapsed = int(time.time() - started)
+print(f"[{elapsed}s] status={state}", file=sys.stderr)
+time.sleep(interval)
+continue
+if status == 402:
+payment_sig = create_payment_signature(data)
+status2, data2 = fetch_status(conversation_id, payment_sig)
+if status2 == 200:
+return data2
+raise RuntimeError(f"Re-authorized poll failed: {status2}: {json.dumps(data2)[:1000]}")
+raise RuntimeError(f"Unexpected poll response: status={status}, body={json.dumps(data)[:1000]}")
+raise RuntimeError("Polling timeout exceeded")
 
 def dry_run(query: str, mode: str) -> None:
 status, headers, text = http_request("POST", f"{BASE_URL}/api/deep-research/start", body={"message": query, "researchMode": mode})
@@ -292,11 +282,10 @@ print(json.dumps(parsed, indent=2))
 except Exception:
 print(text)
 
-
 def main() -> int:
 parser = argparse.ArgumentParser(description="BIOS Deep Research via x402 v2")
 parser.add_argument("query", help="Research query")
-parser.add_argument("--mode", choices=["steering", "smart", "fully-autonomous"], default="steering")
+parser.add_argument("--mode", choices=["steering", "semi-autonomous", "fully-autonomous"], default="steering")
 parser.add_argument("--conversation-id")
 parser.add_argument("--dry-run", action="store_true")[11:41 AM]parser.add_argument("--no-poll", action="store_true", help="Submit the paid request and stop after receiving conversationId")
 parser.add_argument("--poll-interval", type=int, default=180)
@@ -324,6 +313,5 @@ except Exception as e:
 print(f"Error: {e}", file=sys.stderr)
 return 1
 
-
-if __name__ == "__main__":
+if **name** == "**main**":
 raise SystemExit(main())
